@@ -1,0 +1,10 @@
+{
+  "name": "security-audits",
+  "version": "0.1.0",
+  "private": true,
+  "description": "deepsec audits workspace for the webapp sample.",
+  "type": "module",
+  "dependencies": {
+    "deepsec": "^0.1.0"
+  }
+}

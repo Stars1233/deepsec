@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+.vercel
+.env*.local
+.DS_Store
+.claude
+linear-*
