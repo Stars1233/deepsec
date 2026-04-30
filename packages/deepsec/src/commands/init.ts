@@ -49,13 +49,15 @@ export function initCommand(opts: InitOpts) {
   const targetRel = path.relative(workspaceDir, targetRoot);
 
   fs.mkdirSync(workspaceDir, { recursive: true });
+  fs.mkdirSync(path.join(workspaceDir, "data", projectId), { recursive: true });
 
   writeFile(workspaceDir, "package.json", packageJson(path.basename(workspaceDir)));
   writeFile(workspaceDir, "deepsec.config.ts", configTs(projectId, targetRel));
-  writeFile(workspaceDir, "INFO.md", infoMd(projectId));
+  writeFile(workspaceDir, "README.md", readmeMd(projectId, targetRel));
   writeFile(workspaceDir, "AGENTS.md", agentsMd(projectId, targetRel));
   writeFile(workspaceDir, ".env.local", envLocal());
   writeFile(workspaceDir, ".gitignore", gitignore());
+  writeFile(path.join(workspaceDir, "data", projectId), "INFO.md", infoMd(projectId));
 
   const wsRel = path.relative(process.cwd(), workspaceDir) || ".";
   console.log(
@@ -70,7 +72,7 @@ export function initCommand(opts: InitOpts) {
   console.log(
     `  ${YELLOW}Hand off to your coding agent:${RESET} ${BOLD}AGENTS.md${RESET} has the prompt.`,
   );
-  console.log(`  ${DIM}It walks the agent through filling in INFO.md from your repo.${RESET}`);
+  console.log(`  ${DIM}It walks the agent through filling in data/${projectId}/INFO.md.${RESET}`);
   console.log();
   console.log(`  pnpm deepsec scan    --project-id ${projectId} --root ${targetRel}`);
   console.log(`  pnpm deepsec process --project-id ${projectId}`);
@@ -98,20 +100,11 @@ function packageJson(name: string): string {
 }
 
 function configTs(id: string, targetRel: string): string {
-  return `import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { defineConfig } from "deepsec/config";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
+  return `import { defineConfig } from "deepsec/config";
 
 export default defineConfig({
   projects: [
-    {
-      id: ${JSON.stringify(id)},
-      root: ${JSON.stringify(targetRel)},
-      infoMarkdown: fs.readFileSync(path.join(here, "INFO.md"), "utf-8"),
-    },
+    { id: ${JSON.stringify(id)}, root: ${JSON.stringify(targetRel)} },
   ],
 });
 `;
@@ -120,7 +113,9 @@ export default defineConfig({
 function infoMd(id: string): string {
   return `# ${id}
 
-> Replace each section with real content. See AGENTS.md for guidance.
+> Replace each section with real content. See \`AGENTS.md\` (in the
+> workspace root) for guidance and a coding-agent prompt that fills
+> this in for you.
 
 ## What this codebase does
 
@@ -144,11 +139,95 @@ function infoMd(id: string): string {
 `;
 }
 
+function readmeMd(id: string, targetRel: string): string {
+  return `# deepsec audits workspace
+
+This directory holds deepsec scan state for one or more codebases.
+Currently configured: \`${id}\` (target: \`${targetRel}\`).
+
+## Setup
+
+1. \`pnpm install\` — pulls in [deepsec](https://www.npmjs.com/package/deepsec).
+2. Add your AI Gateway token to \`.env.local\` (see [vercel-setup
+   docs](https://github.com/vercel/deepsec/blob/main/docs/vercel-setup.md)).
+3. Open \`AGENTS.md\` in your coding agent (Claude Code, Cursor, …) —
+   it'll fill in \`data/${id}/INFO.md\` from your codebase.
+
+## Daily commands
+
+\`\`\`bash
+pnpm deepsec scan        --project-id ${id} --root ${targetRel}
+pnpm deepsec process     --project-id ${id} --concurrency 5
+pnpm deepsec revalidate  --project-id ${id} --concurrency 5  # cuts FP rate
+pnpm deepsec export      --project-id ${id} --format md-dir --out ./findings
+\`\`\`
+
+\`scan\` is free (regex only). \`process\` is the AI stage (≈$0.30/file
+on Opus by default). State lives in \`data/${id}/\`.
+
+## Adding another project
+
+Append to \`projects[]\` in \`deepsec.config.ts\`:
+
+\`\`\`ts
+projects: [
+  { id: "${id}", root: "${targetRel}" },
+  { id: "another", root: "../another" },
+],
+\`\`\`
+
+Each project gets its own \`data/<id>/\` subdirectory. Write a separate
+\`data/<id>/INFO.md\` per project (auto-loaded into the AI prompt).
+
+## Layout
+
+\`\`\`
+deepsec.config.ts        Project list (one entry per scanned repo)
+data/${id}/
+  INFO.md                Repo context — auto-injected into AI prompts
+  files/                 One JSON per scanned source file
+  runs/                  Run metadata
+  reports/               Generated markdown reports
+AGENTS.md                Setup prompt for your coding agent
+.env.local               Tokens (gitignored)
+\`\`\`
+
+## Versioning the workspace + scan state
+
+This workspace's \`.gitignore\` excludes \`data/\`. Scan output (findings,
+run metadata, INFO.md) is often organization-sensitive and shouldn't
+share a git history with the workspace tooling.
+
+The recommended pattern is **\`data/\` as its own git repo**:
+
+\`\`\`bash
+git init                 # the workspace itself (config, AGENTS.md, plugins)
+cd data && git init      # the scan state, separately
+\`\`\`
+
+That way you can share the workspace (config + custom matchers + agent
+setup) freely while keeping findings and project context (\`INFO.md\`)
+in a private repo.
+
+## Docs
+
+After \`pnpm install\`, the full deepsec docs ship at
+\`node_modules/deepsec/dist/docs/\`:
+
+- \`getting-started.md\`, \`configuration.md\`, \`models.md\`,
+  \`writing-matchers.md\`, \`plugins.md\`, \`architecture.md\`,
+  \`data-layout.md\`, \`vercel-setup.md\`, \`faq.md\`
+
+Or browse them on
+[GitHub](https://github.com/vercel/deepsec/tree/main/docs).
+`;
+}
+
 function agentsMd(id: string, targetRel: string): string {
   return `# Agent setup
 
 This is a deepsec scanning workspace for \`${id}\` (target: \`${targetRel}\`).
-Setup is incomplete — \`INFO.md\` still has placeholder sections.
+Setup is incomplete — \`data/${id}/INFO.md\` still has placeholder sections.
 
 ## What to do
 
@@ -157,15 +236,15 @@ Setup is incomplete — \`INFO.md\` still has placeholder sections.
    under \`node_modules/deepsec/dist/docs/\`. Read \`getting-started.md\`,
    \`configuration.md\`, and \`writing-matchers.md\` (skim the rest).
 
-2. **Fill in \`INFO.md\`.** The fields are listed there. Source material:
+2. **Fill in \`data/${id}/INFO.md\`.** It's auto-injected into the AI
+   prompt for every batch. Source material:
    - \`${targetRel}/README.md\`
    - \`${targetRel}/package.json\` (or \`go.mod\`, \`pyproject.toml\`, etc.)
    - any \`AGENTS.md\` / \`CLAUDE.md\` in \`${targetRel}\`
    - the actual code under \`${targetRel}/\` — *open files*, don't guess
 
    Be concrete. Name actual functions, file globs, middleware names. Avoid
-   generic security boilerplate. INFO.md is injected into the AI prompt
-   for every batch — vague content here means vague findings.
+   generic security boilerplate. Vague INFO.md → vague findings.
 
 3. **(Optional) Add custom matchers** for repo-specific patterns the
    built-in matchers won't catch. Read
@@ -194,7 +273,7 @@ ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh
 
 function gitignore(): string {
   return `node_modules/
-data/
 .env*.local
+data/
 `;
 }

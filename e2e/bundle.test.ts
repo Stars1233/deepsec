@@ -169,13 +169,16 @@ export default defineConfig({
       for (const f of [
         "package.json",
         "deepsec.config.ts",
-        "INFO.md",
+        "README.md",
         "AGENTS.md",
         ".env.local",
         ".gitignore",
+        "data/my-app/INFO.md",
       ]) {
         expect(fs.existsSync(path.join(workspace, f)), `missing ${f}`).toBe(true);
       }
+      // No top-level INFO.md — it lives under data/<id>/.
+      expect(fs.existsSync(path.join(workspace, "INFO.md"))).toBe(false);
       // No custom matchers / extra files from a sample copy.
       expect(fs.existsSync(path.join(workspace, "matchers"))).toBe(false);
       expect(fs.existsSync(path.join(workspace, "config.json"))).toBe(false);
@@ -185,17 +188,29 @@ export default defineConfig({
       expect(pkg.name).toBe("audits");
       expect(pkg.dependencies.deepsec).toBeTruthy();
 
-      // config.ts: id derived from target basename, root is relative.
+      // config.ts: minimal — id + root only, no fs/path/infoMarkdown loader.
       const configSrc = fs.readFileSync(path.join(workspace, "deepsec.config.ts"), "utf-8");
       expect(configSrc).toContain('id: "my-app"');
       expect(configSrc).toContain('root: "../my-app"');
-      expect(configSrc).toContain("infoMarkdown:");
+      expect(configSrc).not.toContain("infoMarkdown");
+      expect(configSrc).not.toContain('from "node:fs"');
 
-      // AGENTS.md: agent setup prompt mentions SKILL.md and INFO.md.
+      // README.md: usage instructions for humans.
+      const readmeMd = fs.readFileSync(path.join(workspace, "README.md"), "utf-8");
+      expect(readmeMd).toContain("deepsec audits workspace");
+      expect(readmeMd).toContain("pnpm deepsec scan");
+      expect(readmeMd).toContain("Adding another project");
+
+      // AGENTS.md: agent setup prompt mentions SKILL.md and INFO.md location.
       const agentsMd = fs.readFileSync(path.join(workspace, "AGENTS.md"), "utf-8");
       expect(agentsMd).toContain("node_modules/deepsec/SKILL.md");
-      expect(agentsMd).toContain("INFO.md");
+      expect(agentsMd).toContain("data/my-app/INFO.md");
       expect(agentsMd).toContain("../my-app");
+
+      // .gitignore: simple — data/ is excluded entirely (it's its own git repo).
+      const gitignore = fs.readFileSync(path.join(workspace, ".gitignore"), "utf-8");
+      expect(gitignore).toContain("data/");
+      expect(gitignore).not.toContain("data/*/files/");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
