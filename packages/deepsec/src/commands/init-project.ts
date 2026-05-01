@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { dataDir, ensureProject, findProject } from "@deepsec/core";
+import { dataDir, ensureProject } from "@deepsec/core";
 import { BOLD, DIM, GREEN, RESET, YELLOW } from "../formatters.js";
 import { requireExistingDir } from "../require-dir.js";
 
@@ -254,21 +254,27 @@ export function initProjectCommand(opts: {
     process.exit(1);
   }
 
-  // Reference findProject to silence unused-import lint when this file
-  // is bundled (the function is part of the public surface and may be
-  // used by future callers).
-  void findProject;
-
   console.log(
     `${GREEN}✓${RESET} Added project ${BOLD}${result.id}${RESET} → ${result.targetRel}\n`,
   );
   console.log(
-    `  ${YELLOW}Hand off to your coding agent:${RESET} open the workspace in Claude Code,`,
+    `  ${YELLOW}Paste this into your coding agent${RESET} ${DIM}(Claude Code, Cursor, Codex CLI):${RESET}`,
   );
-  console.log(
-    `  Cursor, Codex CLI, etc. They'll pick up ${BOLD}data/${result.id}/SETUP.md${RESET} and`,
-  );
-  console.log(`  fill in ${BOLD}data/${result.id}/INFO.md${RESET} from the codebase.`);
   console.log();
-  console.log(`  Then: ${DIM}pnpm deepsec scan --project-id ${result.id}${RESET}`);
+  printAgentPrompt(result.id, result.targetRel);
+  console.log();
+  console.log(`  Then run: ${DIM}pnpm deepsec scan --project-id ${result.id}${RESET}`);
+}
+
+function printAgentPrompt(id: string, targetRel: string): void {
+  const lines = [
+    `Read node_modules/deepsec/SKILL.md to understand the tool. Then`,
+    `read data/${id}/SETUP.md and follow it: open ${targetRel}, read`,
+    `its README + package.json (or go.mod / pyproject.toml) + any`,
+    `AGENTS.md / CLAUDE.md, then replace each section in`,
+    `data/${id}/INFO.md with concrete content — auth helpers,`,
+    `middleware names, threat model, false-positive sources. Be`,
+    `specific: name actual functions and file globs, not boilerplate.`,
+  ];
+  for (const l of lines) console.log(`    ${BOLD}>${RESET} ${l}`);
 }

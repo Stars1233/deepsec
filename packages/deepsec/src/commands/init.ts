@@ -74,24 +74,39 @@ export function initCommand(opts: InitOpts) {
   writeFile(workspaceDir, "README.md", readmeMd(registered.id, registered.targetRel));
 
   const wsRel = path.relative(process.cwd(), workspaceDir) || ".";
-  console.log(
-    `${GREEN}✓${RESET} Initialized deepsec audits workspace at ${BOLD}${workspaceDir}${RESET}`,
-  );
+  console.log(`${GREEN}✓${RESET} Created ${BOLD}${workspaceDir}${RESET}`);
   console.log(
     `  ${DIM}First project:${RESET} ${BOLD}${registered.id}${RESET} → ${registered.targetRel}\n`,
   );
-  console.log("Next steps:\n");
+  console.log("Next:\n");
   if (wsRel !== ".") console.log(`  cd ${wsRel}`);
   console.log(`  pnpm install                          ${DIM}# installs deepsec${RESET}`);
   console.log(`  ${DIM}# Set ANTHROPIC_AUTH_TOKEN in .env.local${RESET}`);
   console.log();
-  console.log(`  ${YELLOW}Hand off to your coding agent:${RESET} open the workspace and follow`);
-  console.log(`  ${BOLD}data/${registered.id}/SETUP.md${RESET} to fill in INFO.md.`);
+  console.log(
+    `  ${YELLOW}Paste this into your coding agent${RESET} ${DIM}(Claude Code, Cursor, Codex CLI):${RESET}`,
+  );
   console.log();
-  console.log(`  pnpm deepsec scan    --project-id ${registered.id}`);
-  console.log(`  pnpm deepsec process --project-id ${registered.id}`);
+  printAgentPrompt(registered.id, registered.targetRel);
   console.log();
-  console.log(`  ${DIM}# To register another project later: deepsec init-project <root>${RESET}`);
+  console.log(`  Then run:`);
+  console.log(`    pnpm deepsec scan    --project-id ${registered.id}`);
+  console.log(`    pnpm deepsec process --project-id ${registered.id}`);
+  console.log();
+  console.log(`  ${DIM}# Register another codebase later: deepsec init-project <root>${RESET}`);
+}
+
+function printAgentPrompt(id: string, targetRel: string): void {
+  const lines = [
+    `Read node_modules/deepsec/SKILL.md to understand the tool. Then`,
+    `read data/${id}/SETUP.md and follow it: open ${targetRel}, read`,
+    `its README + package.json (or go.mod / pyproject.toml) + any`,
+    `AGENTS.md / CLAUDE.md, then replace each section in`,
+    `data/${id}/INFO.md with concrete content — auth helpers,`,
+    `middleware names, threat model, false-positive sources. Be`,
+    `specific: name actual functions and file globs, not boilerplate.`,
+  ];
+  for (const l of lines) console.log(`    ${BOLD}>${RESET} ${l}`);
 }
 
 function writeFile(dir: string, name: string, content: string) {

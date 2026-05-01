@@ -162,9 +162,11 @@ export default defineConfig({
     try {
       const { status, stdout, stderr } = runBundle(["init", workspace, targetRoot]);
       expect(status, `stdout: ${stdout}\nstderr: ${stderr}`).toBe(0);
-      expect(stdout).toContain("Initialized deepsec audits workspace");
+      expect(stdout).toContain("Created");
       expect(stdout).toContain("First project:");
-      expect(stdout).toContain("SETUP.md");
+      expect(stdout).toContain("Paste this into your coding agent");
+      expect(stdout).toContain("SKILL.md");
+      expect(stdout).toContain("data/my-app/INFO.md");
 
       for (const f of [
         "package.json",
