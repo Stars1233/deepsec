@@ -64,49 +64,34 @@ Triage buckets findings into P0/P1/P2/skip without re-reading the code
 — it just looks at the finding text. That's a cheap task; Opus is
 overkill. Sonnet keeps `triage` at ~1¢/finding.
 
-## Refusals are not a large problem
+## Refusals
 
-Frontier models occasionally refuse to investigate a candidate — most
-often when source contains an exploit they pattern-match as harmful,
-or when a path crosses a content filter.
-
-**deepsec auto-detects refusals.** After every batch (in both `process`
-and `revalidate`, on both Claude and Codex backends), deepsec issues a
-follow-up turn that explicitly asks the agent whether it skipped or
-declined anything:
+Models occasionally refuse to investigate a candidate — usually when the
+source contains an exploit pattern they read as harmful, or when a path
+trips a content filter. After every batch, deepsec issues a follow-up
+turn asking the agent whether it skipped or declined anything:
 
 > Looking back at the investigation: was there anything you declined
 > to fully analyze, refused to look at, or skipped because the content
 > or the task felt uncomfortable or out of scope?
 
-The agent answers in a structured JSON shape (see
-`parseRefusalReport` in
-`packages/processor/src/agents/shared.ts`). If `refused: true`, the
+The agent answers in a structured JSON shape (see `parseRefusalReport`
+in `packages/processor/src/agents/shared.ts`). If `refused: true`, the
 batch gets a `refusal` record in run metadata, the per-batch log line
 shows a ⚠️ `refusal` marker, and the `refusal` field on the FileRecord
-is preserved so you can audit later. There is no silent skip — every
-refusal lands in the data.
+sticks around for audit. No silent skips.
 
-In practice this is rarely a real problem:
+Claude Opus and `gpt-5.5` refuse less than 1% of batches in practice. A
+refused batch produces no false negatives — affected files stay
+`pending` (revalidation keeps the original verdict), so re-running
+`--reinvestigate` against the other backend picks up the dropped sites.
+Findings dedupe across agents, so you don't pay twice.
 
-- **Refusals are uncommon.** Claude Opus and `gpt-5.5` refuse far less
-  than 1% of batches on realistic security-investigation runs.
-- **They're recoverable.** A refused batch produces no false-*negative*
-  finding — it leaves the affected files in `pending` state (or, for a
-  revalidation, leaves the original verdict unchanged). Re-running
-  with `--reinvestigate` against the *other* backend (`--agent codex`,
-  or vice versa) reliably picks up the dropped sites. Findings dedupe
-  across agents, so you don't pay twice.
-- **They're visible.** The auto-detection above is what makes them
-  visible — between the ⚠️ marker, the `refusal` record on the
-  FileRecord, and the count surfaced by `deepsec metrics`, refusals are
-  trivially auditable.
-
-If a single file consistently triggers a refusal (>5% of batches), it
-is usually one path with a hard-to-disambiguate exploit pattern. Move
-it to `config.json:ignorePaths` for that project, or run that file
-alone with `--batch-size 1` so a refusal doesn't take a batch of
-otherwise-fine files down with it.
+If a single file consistently triggers a refusal (>5% of batches), it's
+usually one path with a hard-to-disambiguate exploit pattern. Add it to
+`config.json:ignorePaths`, or run that file alone with `--batch-size 1`
+so the refusal doesn't take a batch of otherwise-fine files down with
+it.
 
 ## Future models (e.g. Anthropic Mythos)
 

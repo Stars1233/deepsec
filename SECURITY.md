@@ -5,7 +5,7 @@ open a public issue**.
 
 Report it via GitHub's private reporting mechanism:
 
-<https://github.com/vercel/deepsec/security/advisories/new>
+<https://github.com/vercel-labs/deepsec/security/advisories/new>
 
 You'll get a response within 5 business days. Critical issues are
 prioritized.

@@ -4,19 +4,16 @@ AI-powered vulnerability scanner. Regex matchers find candidate sites,
 then Claude or Codex agents investigate each batch and emit structured
 findings. The pipeline triages, revalidates, and exports results.
 
-deepsec is meant to be used together with your existing coding agent. Ask
-it to build custom scanners for your code base through deepsec's flexible
-plugin system.
+Pair it with your existing coding agent: hand it a confirmed finding and
+ask it to write a matcher for sites of the same shape. Plugin slots cover
+matchers, notifiers, ownership, people lookups, and remote executors.
 
-deepsec performs very deep analysis of a code base and can get very expensive
-to use. We recommend running it one-off to get a code base into a good
-state and then relying on code review based tools for continuous feedback.
+The analysis is deep and expensive. Use it as a one-shot pass to clean a
+codebase up, then lean on cheaper code-review tools for ongoing feedback.
 
-Supports massively parallel fanout of processing across many worker
-machines for large code bases. Generally, commands are idempotent: When you
-interrupt a job, you can restart it and `deepsec` will continue where it
-left off.
-
+For large codebases, work fans out across worker machines in parallel.
+Commands are idempotent — interrupt a job, restart it, and deepsec picks up
+where it left off.
 
 ## Get started
 
@@ -115,9 +112,8 @@ sub-package, etc.) and paste the same prompt above with the new id.
 
 ## AI provider — Vercel AI Gateway
 
-Both supported agent backends route through Vercel AI Gateway by
-default — one token covers Claude **and** Codex, zero-data retention,
-high fan-out quotas.
+Both agent backends route through Vercel AI Gateway by default. One
+token covers Claude and Codex; the gateway has zero data retention.
 
 ```
 ANTHROPIC_AUTH_TOKEN=vck_...

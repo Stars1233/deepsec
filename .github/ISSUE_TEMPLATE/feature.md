@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a new capability for vulnex
+about: Suggest a new capability for deepsec
 labels: enhancement
 ---
 
@@ -8,7 +8,7 @@ labels: enhancement
 
 <!-- The user-facing problem, not the proposed solution. -->
 
-## What would you want vulnex to do
+## What would you want deepsec to do
 
 <!-- The shape of the feature. CLI flag? New command? New plugin slot?
 Be concrete. -->

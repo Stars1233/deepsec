@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a bug in vulnex itself (not a finding vulnex produced about another codebase)
+about: Report a bug in deepsec itself (not a finding deepsec produced about another codebase)
 labels: bug
 ---
 
@@ -20,7 +20,7 @@ labels: bug
 
 ## Environment
 
-- vulnex version (`pnpm vulnex --version`):
+- deepsec version (`pnpm deepsec --version`):
 - Node version (`node --version`):
 - OS:
 - Agent backend (`claude-agent-sdk` / `codex`):

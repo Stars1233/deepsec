@@ -34,10 +34,10 @@ matches, AI findings, analysis history, git committer info, ownership.
 Full schemas for every file under `data/` are documented in
 [data-layout.md](data-layout.md).
 
-The merge model: every stage *adds to* the FileRecord. Re-scanning merges
-new candidates without losing prior analysis. Re-processing appends to
-`analysisHistory` without dropping past findings. Revalidation annotates
-existing findings with verdicts, never deletes them.
+The merge model is additive: every stage adds to the FileRecord. A
+re-scan merges new candidates into the existing set; a re-process appends
+to `analysisHistory` and merges new findings; revalidation tags existing
+findings with verdicts. Nothing is overwritten or deleted.
 
 ## Stage details
 
