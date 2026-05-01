@@ -13,7 +13,10 @@ to use. We recommend running it one-off to get a code base into a good
 state and then relying on code review based tools for continuous feedback.
 
 Supports massively parallel fanout of processing across many worker
-machines for large code bases.
+machines for large code bases. Generally, commands are idempotent: When you
+interrupt a job, you can restart it and `deepsec` will continue where it
+left off.
+
 
 ## Get started
 
