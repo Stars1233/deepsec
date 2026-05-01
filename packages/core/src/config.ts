@@ -70,6 +70,7 @@ export class PluginRegistry {
 
 let _registry: PluginRegistry = new PluginRegistry();
 let _config: DeepsecConfig | undefined;
+let _configPath: string | undefined;
 
 export function getRegistry(): PluginRegistry {
   return _registry;
@@ -79,9 +80,15 @@ export function getConfig(): DeepsecConfig | undefined {
   return _config;
 }
 
+/** Absolute path to the loaded config file, or `undefined` if no config loaded. */
+export function getConfigPath(): string | undefined {
+  return _configPath;
+}
+
 /** Wired up by the CLI bootstrap after a config file has been loaded. */
-export function setLoadedConfig(config: DeepsecConfig): void {
+export function setLoadedConfig(config: DeepsecConfig, configPath?: string): void {
   _config = config;
+  _configPath = configPath;
   _registry = new PluginRegistry();
   for (const plugin of config.plugins ?? []) {
     _registry.add(plugin);

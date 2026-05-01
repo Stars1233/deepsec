@@ -50,6 +50,7 @@ export {
   defineConfig,
   findProject,
   getConfig,
+  getConfigPath,
   getRegistry,
   PluginRegistry,
   setLoadedConfig,

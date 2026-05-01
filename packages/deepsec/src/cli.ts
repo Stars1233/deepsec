@@ -8,6 +8,7 @@ import { Command } from "commander";
 import { enrichCommand } from "./commands/enrich.js";
 import { exportCommand } from "./commands/export.js";
 import { initCommand } from "./commands/init.js";
+import { initProjectCommand } from "./commands/init-project.js";
 import { metricsCommand } from "./commands/metrics.js";
 import { processCommand } from "./commands/process.js";
 import { reportCommand } from "./commands/report.js";
@@ -46,10 +47,22 @@ program
   );
 
 program
+  .command("init-project <target-root>")
+  .description("Register an additional project in the current workspace")
+  .option("--id <project-id>", "Override the project id (default: basename of <target-root>)")
+  .option("--force", "Overwrite an existing project of the same id")
+  .action((targetRoot: string | undefined, opts: { id?: string; force?: boolean }) =>
+    initProjectCommand({ targetRoot, id: opts.id, force: opts.force }),
+  );
+
+program
   .command("scan")
   .description("Scan a codebase for candidate vulnerability sites")
   .requiredOption("--project-id <id>", "Project identifier")
-  .requiredOption("--root <path>", "Root path of the codebase to scan")
+  .option(
+    "--root <path>",
+    "Root path to scan (overrides config / project.json; required for first-time scans)",
+  )
   .option("--matchers <slugs>", "Comma-separated list of matcher slugs to use")
   .action(scanCommand);
 

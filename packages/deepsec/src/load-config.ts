@@ -41,11 +41,23 @@ export async function loadConfig(
 
   const ext = path.extname(file);
   let mod: { default?: DeepsecConfig } | DeepsecConfig;
-  if (ext === ".ts" || ext === ".cjs") {
-    const jiti = createJiti(import.meta.url, { interopDefault: true });
-    mod = (await jiti.import(file)) as { default?: DeepsecConfig } | DeepsecConfig;
-  } else {
-    mod = (await import(pathToFileURL(file).href)) as { default?: DeepsecConfig };
+  try {
+    if (ext === ".ts" || ext === ".cjs") {
+      const jiti = createJiti(import.meta.url, { interopDefault: true });
+      mod = (await jiti.import(file)) as { default?: DeepsecConfig } | DeepsecConfig;
+    } else {
+      mod = (await import(pathToFileURL(file).href)) as { default?: DeepsecConfig };
+    }
+  } catch (err) {
+    // The config file exists but its imports can't resolve (most often
+    // because the workspace hasn't been `pnpm install`-ed yet). Don't
+    // hard-fail — let workspace-management commands like `init-project`
+    // run. Commands that need the loaded config (scan, process, etc.)
+    // will error on their own when `findProject` returns undefined.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[deepsec] could not load ${file}: ${msg}`);
+    console.error(`[deepsec]   Run \`pnpm install\` to install dependencies, then retry.`);
+    return undefined;
   }
 
   const config: DeepsecConfig | undefined =
@@ -57,6 +69,6 @@ export async function loadConfig(
     );
   }
 
-  setLoadedConfig(config);
+  setLoadedConfig(config, file);
   return { config, path: file };
 }

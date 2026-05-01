@@ -93,8 +93,14 @@ scanned source file), `runs/`, plus `project.json` and the optional
 [data-layout.md](data-layout.md) for the full schema.
 
 ```bash
-pnpm deepsec scan --project-id my-app --root ../my-app
+pnpm deepsec scan --project-id my-app
 ```
+
+The `--root` is resolved from `deepsec.config.ts` (or, for projects
+that have already been scanned once, from `data/<id>/project.json`).
+Pass `--root <path>` to override — useful for one-off scans against a
+different checkout, or for first-time scans of a project that isn't in
+the config yet.
 
 `scan` runs ~110 regex matchers across the codebase. No AI calls, no cost.
 On a 2,000-file project it takes ~15s. Output goes to `data/my-app/files/`

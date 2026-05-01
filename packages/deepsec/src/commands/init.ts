@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { BOLD, DIM, GREEN, RESET, YELLOW } from "../formatters.js";
+import { requireExistingDir } from "../require-dir.js";
+import { PROJECTS_INSERT_MARKER, registerProject } from "./init-project.js";
 
 const IGNORED_WORKSPACE_ENTRIES = new Set([".git", ".DS_Store"]);
 
@@ -23,10 +25,11 @@ export function initCommand(opts: InitOpts) {
   }
 
   const workspaceDir = path.resolve(process.cwd(), opts.workspace);
-  const targetRoot = path.resolve(process.cwd(), opts.targetRoot);
-
-  if (!fs.existsSync(targetRoot)) {
-    console.error(`Target codebase does not exist: ${targetRoot}`);
+  let targetAbs: string;
+  try {
+    targetAbs = requireExistingDir(opts.targetRoot, "<target-root>");
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 
@@ -43,39 +46,52 @@ export function initCommand(opts: InitOpts) {
     }
   }
 
-  const projectId = opts.id ?? path.basename(targetRoot);
-  // Use a relative path in the config so the workspace stays portable
-  // (re-locate the workspace and the target together and it still works).
-  const targetRel = path.relative(workspaceDir, targetRoot);
-
+  // Workspace skeleton: empty config (with marker), README, AGENTS, env.
   fs.mkdirSync(workspaceDir, { recursive: true });
-  fs.mkdirSync(path.join(workspaceDir, "data", projectId), { recursive: true });
-
   writeFile(workspaceDir, "package.json", packageJson(path.basename(workspaceDir)));
-  writeFile(workspaceDir, "deepsec.config.ts", configTs(projectId, targetRel));
-  writeFile(workspaceDir, "README.md", readmeMd(projectId, targetRel));
-  writeFile(workspaceDir, "AGENTS.md", agentsMd(projectId, targetRel));
+  writeFile(workspaceDir, "deepsec.config.ts", emptyConfigTs());
+  writeFile(workspaceDir, "AGENTS.md", workspaceAgentsMd());
   writeFile(workspaceDir, ".env.local", envLocal());
   writeFile(workspaceDir, ".gitignore", gitignore());
-  writeFile(path.join(workspaceDir, "data", projectId), "INFO.md", infoMd(projectId));
+
+  // Register the first project via the shared code path. Same writes
+  // `init-project` would do: data/<id>/{project.json,INFO.md,SETUP.md}
+  // and append to projects[].
+  let registered: ReturnType<typeof registerProject>;
+  try {
+    registered = registerProject({
+      workspaceDir,
+      targetRoot: targetAbs,
+      id: opts.id,
+      force: opts.force,
+    });
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  // README references the project, so write it AFTER registration.
+  writeFile(workspaceDir, "README.md", readmeMd(registered.id, registered.targetRel));
 
   const wsRel = path.relative(process.cwd(), workspaceDir) || ".";
   console.log(
     `${GREEN}✓${RESET} Initialized deepsec audits workspace at ${BOLD}${workspaceDir}${RESET}`,
   );
-  console.log(`  ${DIM}First project:${RESET} ${BOLD}${projectId}${RESET} → ${targetRel}\n`);
+  console.log(
+    `  ${DIM}First project:${RESET} ${BOLD}${registered.id}${RESET} → ${registered.targetRel}\n`,
+  );
   console.log("Next steps:\n");
   if (wsRel !== ".") console.log(`  cd ${wsRel}`);
   console.log(`  pnpm install                          ${DIM}# installs deepsec${RESET}`);
   console.log(`  ${DIM}# Set ANTHROPIC_AUTH_TOKEN in .env.local${RESET}`);
   console.log();
-  console.log(
-    `  ${YELLOW}Hand off to your coding agent:${RESET} ${BOLD}AGENTS.md${RESET} has the prompt.`,
-  );
-  console.log(`  ${DIM}It walks the agent through filling in data/${projectId}/INFO.md.${RESET}`);
+  console.log(`  ${YELLOW}Hand off to your coding agent:${RESET} open the workspace and follow`);
+  console.log(`  ${BOLD}data/${registered.id}/SETUP.md${RESET} to fill in INFO.md.`);
   console.log();
-  console.log(`  pnpm deepsec scan    --project-id ${projectId} --root ${targetRel}`);
-  console.log(`  pnpm deepsec process --project-id ${projectId}`);
+  console.log(`  pnpm deepsec scan    --project-id ${registered.id}`);
+  console.log(`  pnpm deepsec process --project-id ${registered.id}`);
+  console.log();
+  console.log(`  ${DIM}# To register another project later: deepsec init-project <root>${RESET}`);
 }
 
 function writeFile(dir: string, name: string, content: string) {
@@ -99,43 +115,18 @@ function packageJson(name: string): string {
   )}\n`;
 }
 
-function configTs(id: string, targetRel: string): string {
+/**
+ * Empty config with the insert marker. `init-project` (and the same code
+ * path called from `init`) appends new project entries above the marker.
+ */
+function emptyConfigTs(): string {
   return `import { defineConfig } from "deepsec/config";
 
 export default defineConfig({
   projects: [
-    { id: ${JSON.stringify(id)}, root: ${JSON.stringify(targetRel)} },
+    ${PROJECTS_INSERT_MARKER}
   ],
 });
-`;
-}
-
-function infoMd(id: string): string {
-  return `# ${id}
-
-> Replace each section with real content. See \`AGENTS.md\` (in the
-> workspace root) for guidance and a coding-agent prompt that fills
-> this in for you.
-
-## What this codebase does
-
-<one paragraph describing the app and its purpose>
-
-## Auth shape
-
-<auth helpers, middleware patterns, session shape, RBAC primitives>
-
-## Threat model
-
-<what an attacker would want from this codebase, plus likely vectors>
-
-## Project-specific patterns to flag
-
-<entry points, sensitive helpers, untrusted input shapes, anything domain-specific>
-
-## Known false-positives
-
-<test fixtures, generated code, intentionally-unsafe code paths to ignore>
 `;
 }
 
@@ -150,13 +141,14 @@ Currently configured: \`${id}\` (target: \`${targetRel}\`).
 1. \`pnpm install\` — pulls in [deepsec](https://www.npmjs.com/package/deepsec).
 2. Add your AI Gateway token to \`.env.local\` (see [vercel-setup
    docs](https://github.com/vercel/deepsec/blob/main/docs/vercel-setup.md)).
-3. Open \`AGENTS.md\` in your coding agent (Claude Code, Cursor, …) —
-   it'll fill in \`data/${id}/INFO.md\` from your codebase.
+3. Open this workspace in your coding agent (Claude Code, Cursor, …).
+   It picks up \`data/${id}/SETUP.md\` and fills in
+   \`data/${id}/INFO.md\` from the codebase.
 
 ## Daily commands
 
 \`\`\`bash
-pnpm deepsec scan        --project-id ${id} --root ${targetRel}
+pnpm deepsec scan        --project-id ${id}
 pnpm deepsec process     --project-id ${id} --concurrency 5
 pnpm deepsec revalidate  --project-id ${id} --concurrency 5  # cuts FP rate
 pnpm deepsec export      --project-id ${id} --format md-dir --out ./findings
@@ -167,17 +159,14 @@ on Opus by default). State lives in \`data/${id}/\`.
 
 ## Adding another project
 
-Append to \`projects[]\` in \`deepsec.config.ts\`:
-
-\`\`\`ts
-projects: [
-  { id: "${id}", root: "${targetRel}" },
-  { id: "another", root: "../another" },
-],
+\`\`\`bash
+pnpm deepsec init-project ../another-codebase
 \`\`\`
 
-Each project gets its own \`data/<id>/\` subdirectory. Write a separate
-\`data/<id>/INFO.md\` per project (auto-loaded into the AI prompt).
+Appends a new entry to \`deepsec.config.ts\` (above the insert marker)
+and writes a fresh \`data/<id>/{INFO.md,SETUP.md,project.json}\`. Open
+the new \`SETUP.md\` in your agent to fill in INFO.md. Each project
+gets its own \`data/<id>/\` subdirectory.
 
 ## Layout
 
@@ -185,10 +174,12 @@ Each project gets its own \`data/<id>/\` subdirectory. Write a separate
 deepsec.config.ts        Project list (one entry per scanned repo)
 data/${id}/
   INFO.md                Repo context — auto-injected into AI prompts
+  SETUP.md               Per-project agent setup prompt (delete after use)
+  project.json           Auto-managed: rootPath, githubUrl
   files/                 One JSON per scanned source file
   runs/                  Run metadata
   reports/               Generated markdown reports
-AGENTS.md                Setup prompt for your coding agent
+AGENTS.md                Workspace-level pointer for coding agents
 .env.local               Tokens (gitignored)
 \`\`\`
 
@@ -205,10 +196,6 @@ git init                 # the workspace itself (config, AGENTS.md, plugins)
 cd data && git init      # the scan state, separately
 \`\`\`
 
-That way you can share the workspace (config + custom matchers + agent
-setup) freely while keeping findings and project context (\`INFO.md\`)
-in a private repo.
-
 ## Docs
 
 After \`pnpm install\`, the full deepsec docs ship at
@@ -223,45 +210,35 @@ Or browse them on
 `;
 }
 
-function agentsMd(id: string, targetRel: string): string {
+/**
+ * Workspace-level AGENTS.md — generic pointer to per-project SETUP.md
+ * files and to the deepsec skill. Per-project setup prompts now live at
+ * `data/<id>/SETUP.md` (written by `init-project` / `init`).
+ */
+function workspaceAgentsMd(): string {
   return `# Agent setup
 
-This is a deepsec scanning workspace for \`${id}\` (target: \`${targetRel}\`).
-Setup is incomplete — \`data/${id}/INFO.md\` still has placeholder sections.
+This is a deepsec scanning workspace. Each registered project has its
+own setup prompt at \`data/<id>/SETUP.md\` — open the relevant one when
+asked to set a project up.
 
-## What to do
+## Common tasks
 
-1. **Read the deepsec skill.** After \`pnpm install\`, the file is at
-   \`node_modules/deepsec/SKILL.md\`. It maps every doc topic to a file
-   under \`node_modules/deepsec/dist/docs/\`. Read \`getting-started.md\`,
-   \`configuration.md\`, and \`writing-matchers.md\` (skim the rest).
+- **Set up a project for scanning**: read \`data/<id>/SETUP.md\` and
+  follow it (read \`node_modules/deepsec/SKILL.md\`, then fill
+  \`data/<id>/INFO.md\` from the target codebase).
+- **Add a new project**: run \`deepsec init-project <root>\` — it
+  scaffolds \`data/<id>/\` and prints/writes the setup prompt for the
+  new project.
+- **Write a custom matcher** (only after a real true-positive shows you
+  a pattern worth keeping): read
+  \`node_modules/deepsec/dist/docs/writing-matchers.md\`.
 
-2. **Fill in \`data/${id}/INFO.md\`.** It's auto-injected into the AI
-   prompt for every batch. Source material:
-   - \`${targetRel}/README.md\`
-   - \`${targetRel}/package.json\` (or \`go.mod\`, \`pyproject.toml\`, etc.)
-   - any \`AGENTS.md\` / \`CLAUDE.md\` in \`${targetRel}\`
-   - the actual code under \`${targetRel}/\` — *open files*, don't guess
+## Reference
 
-   Be concrete. Name actual functions, file globs, middleware names. Avoid
-   generic security boilerplate. Vague INFO.md → vague findings.
-
-3. **(Optional) Add custom matchers** for repo-specific patterns the
-   built-in matchers won't catch. Read
-   \`node_modules/deepsec/dist/docs/writing-matchers.md\` first; the
-   workflow there starts from a confirmed finding and grows the matcher
-   from it. Don't add matchers speculatively — wait for a real TP.
-
-## When you're done
-
-The user will run:
-
-\`\`\`bash
-pnpm deepsec scan    --project-id ${id} --root ${targetRel}
-pnpm deepsec process --project-id ${id}
-\`\`\`
-
-You can delete this file once setup is complete.
+The deepsec skill is at \`node_modules/deepsec/SKILL.md\` (after
+\`pnpm install\`). The full docs ship at
+\`node_modules/deepsec/dist/docs/\`.
 `;
 }
 

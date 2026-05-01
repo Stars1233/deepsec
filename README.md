@@ -59,11 +59,16 @@ Two things to do before scanning:
 Then scan:
 
 ```bash
-pnpm deepsec scan        --project-id my-app --root ../my-app
+pnpm deepsec scan        --project-id my-app
 pnpm deepsec process     --project-id my-app --concurrency 5
 pnpm deepsec revalidate  --project-id my-app --concurrency 5     # optional, cuts FP rate
 pnpm deepsec export      --project-id my-app --format md-dir --out ./findings
 ```
+
+(The `--root` for `scan` is resolved from `deepsec.config.ts` —
+override with `--root <path>` for one-off scans against a different
+checkout.) To register another codebase later, run
+`pnpm deepsec init-project <root>`.
 
 To scan a second repo from the same workspace, append a new entry to
 `projects[]` in `deepsec.config.ts`.
