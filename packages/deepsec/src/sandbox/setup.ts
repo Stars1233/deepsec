@@ -1,7 +1,11 @@
 import { type NetworkPolicy, Sandbox } from "@vercel/sandbox";
 import { markSetupComplete } from "./download.js";
 import { trackSandbox, untrackSandbox } from "./shutdown.js";
-import { extractTarballOnSandbox, type TarballStats, uploadTarballToSandbox } from "./upload.js";
+import {
+  extractTarballOnSandbox,
+  type TarballStats,
+  uploadTarballToSandbox,
+} from "./upload.js";
 
 const DEEPSEC_DIR = "/vercel/sandbox/deepsec-app";
 const DATA_DIR = "/vercel/sandbox/deepsec-app/data";
@@ -31,7 +35,6 @@ const BASE_SANDBOX_ENV_KEYS: string[] = [
   "ANTHROPIC_BASE_URL",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
-  "VERCEL_OIDC_TOKEN",
   "DEEPSEC_AGENT_DEBUG",
 ];
 
@@ -44,7 +47,10 @@ const PROXY_URL = `http://127.0.0.1:${PROXY_PORT}`;
 const PROXY_SCRIPT = `${DEEPSEC_DIR}/packages/deepsec/src/sandbox/request-proxy.mjs`;
 const CODEX_HOME = "/vercel/sandbox/.codex";
 
-function buildSandboxEnv(command?: string, agentType?: string): Record<string, string> {
+function buildSandboxEnv(
+  command?: string,
+  agentType?: string,
+): Record<string, string> {
   const env: Record<string, string> = {};
   const keys = new Set([
     ...BASE_SANDBOX_ENV_KEYS,
@@ -93,7 +99,11 @@ function buildSandboxEnv(command?: string, agentType?: string): Record<string, s
 // fall back to the documented hosts when env parsing fails so we never end
 // up applying an effective deny-all by accident.
 
-const DEFAULT_AI_HOSTS = ["ai-gateway.vercel.sh", "api.anthropic.com", "api.openai.com"];
+const DEFAULT_AI_HOSTS = [
+  "ai-gateway.vercel.sh",
+  "api.anthropic.com",
+  "api.openai.com",
+];
 
 function hostFromUrl(u: string | undefined): string | null {
   if (!u) return null;
@@ -145,7 +155,9 @@ interface BootstrapOptions {
  * as their seed. The sandbox is always stopped before return (success or fail)
  * to avoid leaking compute.
  */
-export async function createBootstrapSnapshot(opts: BootstrapOptions): Promise<string> {
+export async function createBootstrapSnapshot(
+  opts: BootstrapOptions,
+): Promise<string> {
   const command = opts.command ?? "process";
   const agentType = opts.agentType ?? "claude-agent-sdk";
   const sandboxEnv = buildSandboxEnv(command, agentType);
@@ -168,9 +180,16 @@ export async function createBootstrapSnapshot(opts: BootstrapOptions): Promise<s
 
   try {
     // Install pnpm globally
-    await runAndLog(sandbox, "npm", ["install", "-g", "pnpm@8"], "/vercel/sandbox", opts.onLog, {
-      sudo: true,
-    });
+    await runAndLog(
+      sandbox,
+      "npm",
+      ["install", "-g", "pnpm@8"],
+      "/vercel/sandbox",
+      opts.onLog,
+      {
+        sudo: true,
+      },
+    );
     opts.onLog("  pnpm installed.");
 
     // Install ripgrep + python3 — Codex agents prefer rg/python over grep/awk
@@ -187,22 +206,53 @@ export async function createBootstrapSnapshot(opts: BootstrapOptions): Promise<s
 
     await Promise.all([
       (async () => {
-        await uploadTarballToSandbox(sandbox, appTar, opts.bundle.app.buffer, opts.onLog);
+        await uploadTarballToSandbox(
+          sandbox,
+          appTar,
+          opts.bundle.app.buffer,
+          opts.onLog,
+        );
         await extractTarballOnSandbox(sandbox, appTar, DEEPSEC_DIR, opts.onLog);
       })(),
       (async () => {
-        await uploadTarballToSandbox(sandbox, targetTar, opts.bundle.target.buffer, opts.onLog);
-        await extractTarballOnSandbox(sandbox, targetTar, TARGET_DIR, opts.onLog);
+        await uploadTarballToSandbox(
+          sandbox,
+          targetTar,
+          opts.bundle.target.buffer,
+          opts.onLog,
+        );
+        await extractTarballOnSandbox(
+          sandbox,
+          targetTar,
+          TARGET_DIR,
+          opts.onLog,
+        );
       })(),
       (async () => {
-        await uploadTarballToSandbox(sandbox, dataTar, opts.bundle.data.buffer, opts.onLog);
-        await extractTarballOnSandbox(sandbox, dataTar, projectDataDir, opts.onLog);
+        await uploadTarballToSandbox(
+          sandbox,
+          dataTar,
+          opts.bundle.data.buffer,
+          opts.onLog,
+        );
+        await extractTarballOnSandbox(
+          sandbox,
+          dataTar,
+          projectDataDir,
+          opts.onLog,
+        );
       })(),
     ]);
 
     // Install dependencies
     opts.onLog("Running pnpm install...");
-    await runAndLog(sandbox, "pnpm", ["install", "--frozen-lockfile"], DEEPSEC_DIR, opts.onLog);
+    await runAndLog(
+      sandbox,
+      "pnpm",
+      ["install", "--frozen-lockfile"],
+      DEEPSEC_DIR,
+      opts.onLog,
+    );
 
     // Ensure agent native binaries. Both backends ship vendored native binaries
     // through optional deps; pnpm's optional-dep filter on the host platform
@@ -254,7 +304,11 @@ interface SpawnOptions {
  */
 export async function spawnFromSnapshot(opts: SpawnOptions): Promise<Sandbox> {
   const sandboxEnv = buildSandboxEnv(opts.command, opts.agentType);
-  const networkPolicy = buildWorkerNetworkPolicy(sandboxEnv, opts.agentType, opts.allowedHosts);
+  const networkPolicy = buildWorkerNetworkPolicy(
+    sandboxEnv,
+    opts.agentType,
+    opts.allowedHosts,
+  );
 
   let sandbox: Sandbox;
   try {
@@ -268,8 +322,11 @@ export async function spawnFromSnapshot(opts: SpawnOptions): Promise<Sandbox> {
   } catch (err: any) {
     const details = [err?.message];
     if (err?.response?.status) details.push(`status: ${err.response.status}`);
-    if (err?.body) details.push(`body: ${JSON.stringify(err.body).slice(0, 300)}`);
-    throw new Error(`Sandbox.create from snapshot failed: ${details.filter(Boolean).join(" | ")}`);
+    if (err?.body)
+      details.push(`body: ${JSON.stringify(err.body).slice(0, 300)}`);
+    throw new Error(
+      `Sandbox.create from snapshot failed: ${details.filter(Boolean).join(" | ")}`,
+    );
   }
 
   trackSandbox(sandbox);
@@ -290,7 +347,10 @@ export async function spawnFromSnapshot(opts: SpawnOptions): Promise<Sandbox> {
   return sandbox;
 }
 
-async function startRequestProxy(sandbox: Sandbox, onLog: (msg: string) => void): Promise<void> {
+async function startRequestProxy(
+  sandbox: Sandbox,
+  onLog: (msg: string) => void,
+): Promise<void> {
   // Background-launch the proxy. Using nohup + setsid + redirecting stdio so
   // the process survives the runCommand's lifecycle.
   await sandbox.runCommand({
@@ -398,7 +458,9 @@ rm -rf /tmp/claude-native-fetch
     if (line.trim()) onLog(`  ${line}`);
   }
   if (result.exitCode !== 0) {
-    throw new Error(`Claude native binary install failed (exit ${result.exitCode})`);
+    throw new Error(
+      `Claude native binary install failed (exit ${result.exitCode})`,
+    );
   }
 }
 
@@ -410,7 +472,10 @@ rm -rf /tmp/claude-native-fetch
  * Best-effort: if neither tool can be installed, we log and move on. The
  * agent can fall back to grep / awk / shell.
  */
-async function installAgentTools(sandbox: Sandbox, onLog: (msg: string) => void): Promise<void> {
+async function installAgentTools(
+  sandbox: Sandbox,
+  onLog: (msg: string) => void,
+): Promise<void> {
   const script = `
 set -u
 log() { echo "  $*"; }
@@ -600,7 +665,9 @@ rm -rf /tmp/codex-native-fetch
     if (line.trim()) onLog(`  ${line}`);
   }
   if (result.exitCode !== 0) {
-    throw new Error(`Codex native binary install failed (exit ${result.exitCode})`);
+    throw new Error(
+      `Codex native binary install failed (exit ${result.exitCode})`,
+    );
   }
 }
 
@@ -611,7 +678,10 @@ rm -rf /tmp/codex-native-fetch
  * firewall, which would already block the analytics endpoints; this just
  * keeps the SDK from logging connection-refused noise.
  */
-async function writeCodexConfig(sandbox: Sandbox, onLog: (msg: string) => void): Promise<void> {
+async function writeCodexConfig(
+  sandbox: Sandbox,
+  onLog: (msg: string) => void,
+): Promise<void> {
   const configToml = `# Written by deepsec sandbox bootstrap. Disables non-AI egress
 # (analytics, update checks, OTEL exporters) so the agent stays within
 # the sandbox firewall allowlist.
@@ -634,7 +704,9 @@ trace_exporter = "none"
   await sandbox.writeFiles([
     { path: `${CODEX_HOME}/config.toml`, content: Buffer.from(configToml) },
   ]);
-  onLog(`  Codex config.toml written to ${CODEX_HOME}/config.toml (telemetry/updates disabled).`);
+  onLog(
+    `  Codex config.toml written to ${CODEX_HOME}/config.toml (telemetry/updates disabled).`,
+  );
 }
 
 async function runAndLog(
@@ -652,11 +724,17 @@ async function runAndLog(
     sudo: extraOpts?.sudo,
   });
   if (result.exitCode !== 0) {
-    const stderr = await result.stderr();
-    const stdout = await result.stdout();
-    const output = stderr || stdout;
+    const stderr = (await result.stderr()).trim();
+    const stdout = (await result.stdout()).trim();
+    // Include BOTH streams. pnpm in particular writes errors to stdout while
+    // emitting unrelated warnings (DEP0169 from `url.parse()`) on stderr —
+    // showing only stderr hides the real failure.
+    const sections: string[] = [];
+    if (stdout) sections.push(`--- stdout ---\n${stdout}`);
+    if (stderr) sections.push(`--- stderr ---\n${stderr}`);
+    const body = sections.length > 0 ? `\n${sections.join("\n")}` : "";
     throw new Error(
-      `Command failed: ${cmd} ${args.join(" ")} (exit ${result.exitCode})\n${output}`,
+      `Command failed: ${cmd} ${args.join(" ")} (exit ${result.exitCode}, cwd ${cwd})${body}`,
     );
   }
 }
