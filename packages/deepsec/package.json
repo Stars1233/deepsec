@@ -1,6 +1,6 @@
 {
   "name": "deepsec",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "AI-powered vulnerability scanner for any codebase",
   "license": "MIT",
   "repository": {
