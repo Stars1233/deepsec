@@ -2,17 +2,19 @@ import type { Severity } from "@deepsec/core";
 import { enrich } from "@deepsec/processor";
 import { commitAndPushData } from "../data-commit.js";
 import { BOLD, DIM, GREEN, RESET } from "../formatters.js";
+import { resolveProjectId } from "../resolve-project-id.js";
 
 export async function enrichCommand(opts: {
-  projectId: string;
+  projectId?: string;
   filter?: string;
   force?: boolean;
   concurrency?: number;
   minSeverity?: string;
 }) {
+  const projectId = resolveProjectId(opts.projectId);
   const minSeverity = opts.minSeverity as Severity | undefined;
   console.log(
-    `${BOLD}Enriching${RESET} files with git history for project ${BOLD}${opts.projectId}${RESET}`,
+    `${BOLD}Enriching${RESET} files with git history for project ${BOLD}${projectId}${RESET}`,
   );
   if (opts.filter) console.log(`  Filter: ${opts.filter}`);
   if (minSeverity) console.log(`  Min severity: ${minSeverity}`);
@@ -20,7 +22,7 @@ export async function enrichCommand(opts: {
   console.log();
 
   const result = await enrich({
-    projectId: opts.projectId,
+    projectId,
     filter: opts.filter,
     force: opts.force,
     concurrency: opts.concurrency,
@@ -37,6 +39,6 @@ export async function enrichCommand(opts: {
   if (result.enriched === 0) {
     console.log("No files to enrich (no findings, or already enriched — use --force).");
   } else {
-    commitAndPushData(`enrich: ${opts.projectId} (${result.enriched} files)`);
+    commitAndPushData(`enrich: ${projectId} (${result.enriched} files)`);
   }
 }

@@ -3,6 +3,7 @@ import { readProjectConfig } from "@deepsec/core";
 import { revalidate } from "@deepsec/processor";
 import { defaultModelForAgent } from "../agent-defaults.js";
 import { BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW } from "../formatters.js";
+import { resolveProjectId } from "../resolve-project-id.js";
 
 function logProgress(progress: {
   type: string;
@@ -50,7 +51,7 @@ function parseCsv(v: string | undefined): string[] | undefined {
 }
 
 export async function revalidateCommand(opts: {
-  projectId: string;
+  projectId?: string;
   runId?: string;
   agent?: string;
   model?: string;
@@ -66,14 +67,15 @@ export async function revalidateCommand(opts: {
   onlySlugs?: string;
   skipSlugs?: string;
 }) {
-  const _project = readProjectConfig(opts.projectId);
+  const projectId = resolveProjectId(opts.projectId);
+  const _project = readProjectConfig(projectId);
   const agentType = opts.agent ?? "claude-agent-sdk";
   const model = opts.model ?? defaultModelForAgent(agentType);
   const minSeverity = opts.minSeverity as Severity | undefined;
   const onlySlugs = parseCsv(opts.onlySlugs);
   const skipSlugs = parseCsv(opts.skipSlugs);
 
-  console.log(`${BOLD}Revalidating${RESET} findings for project ${BOLD}${opts.projectId}${RESET}`);
+  console.log(`${BOLD}Revalidating${RESET} findings for project ${BOLD}${projectId}${RESET}`);
   console.log(`  Agent: ${agentType} (${model})`);
   if (minSeverity) console.log(`  Min severity: ${minSeverity}`);
   if (opts.force) console.log(`  ${YELLOW}Force re-checking all findings${RESET}`);
@@ -83,7 +85,7 @@ export async function revalidateCommand(opts: {
   console.log();
 
   const result = await revalidate({
-    projectId: opts.projectId,
+    projectId,
     runId: opts.runId,
     agentType,
     config: { model, ...(opts.maxTurns ? { maxTurns: opts.maxTurns } : {}) },

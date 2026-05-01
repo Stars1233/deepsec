@@ -2,28 +2,30 @@ import type { Severity } from "@deepsec/core";
 import { readProjectConfig } from "@deepsec/core";
 import { triage } from "@deepsec/processor";
 import { BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW } from "../formatters.js";
+import { resolveProjectId } from "../resolve-project-id.js";
 
 export async function triageCommand(opts: {
-  projectId: string;
+  projectId?: string;
   severity?: string;
   force?: boolean;
   limit?: number;
   concurrency?: number;
   model?: string;
 }) {
-  readProjectConfig(opts.projectId);
+  const projectId = resolveProjectId(opts.projectId);
+  readProjectConfig(projectId);
   const severity = (opts.severity ?? "MEDIUM") as Severity;
   const model = opts.model ?? "claude-sonnet-4-6";
 
   console.log(
-    `${BOLD}Triaging${RESET} ${severity} findings for project ${BOLD}${opts.projectId}${RESET}`,
+    `${BOLD}Triaging${RESET} ${severity} findings for project ${BOLD}${projectId}${RESET}`,
   );
   console.log(`  Model: ${model} (lightweight — no code reading)`);
   if (opts.force) console.log(`  ${YELLOW}Force re-triaging already-triaged findings${RESET}`);
   console.log();
 
   const result = await triage({
-    projectId: opts.projectId,
+    projectId,
     severity,
     force: opts.force,
     limit: opts.limit,

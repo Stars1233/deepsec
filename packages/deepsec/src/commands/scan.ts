@@ -4,6 +4,7 @@ import { findProject, getConfigPath, projectConfigPath } from "@deepsec/core";
 import { scan } from "@deepsec/scanner";
 import { BOLD, DIM, GREEN, RESET } from "../formatters.js";
 import { requireExistingDir } from "../require-dir.js";
+import { resolveProjectId } from "../resolve-project-id.js";
 
 /**
  * Resolve the root directory to scan, in precedence order:
@@ -43,20 +44,19 @@ function resolveScanRoot(opts: { projectId: string; root?: string }): string {
   );
 }
 
-export async function scanCommand(opts: { projectId: string; root?: string; matchers?: string }) {
+export async function scanCommand(opts: { projectId?: string; root?: string; matchers?: string }) {
+  const projectId = resolveProjectId(opts.projectId);
   const matcherSlugs = opts.matchers ? opts.matchers.split(",").map((s) => s.trim()) : undefined;
-  const resolvedRoot = resolveScanRoot(opts);
+  const resolvedRoot = resolveScanRoot({ projectId, root: opts.root });
 
-  console.log(
-    `${BOLD}Scanning${RESET} ${resolvedRoot} for project ${BOLD}${opts.projectId}${RESET}`,
-  );
+  console.log(`${BOLD}Scanning${RESET} ${resolvedRoot} for project ${BOLD}${projectId}${RESET}`);
   if (matcherSlugs) {
     console.log(`${DIM}Matchers: ${matcherSlugs.join(", ")}${RESET}`);
   }
   console.log();
 
   const result = await scan({
-    projectId: opts.projectId,
+    projectId,
     root: resolvedRoot,
     matcherSlugs,
     onProgress(progress) {
@@ -78,5 +78,5 @@ export async function scanCommand(opts: { projectId: string; root?: string; matc
     `${GREEN}Scan complete.${RESET} Run: ${BOLD}${result.runId}${RESET}  Candidates: ${result.candidateCount}`,
   );
   console.log();
-  console.log(`Next: ${DIM}pnpm deepsec process --project-id ${opts.projectId}${RESET}`);
+  console.log(`Next: ${DIM}pnpm deepsec process --project-id ${projectId}${RESET}`);
 }

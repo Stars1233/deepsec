@@ -95,9 +95,9 @@ Examples:
 program
   .command("scan")
   .description("Run regex matchers across a project to find candidate vulnerability sites")
-  .requiredOption(
+  .option(
     "--project-id <id>",
-    "Project identifier (must be registered via init / init-project)",
+    "Project identifier (default: the only project in deepsec.config.ts; required if there are multiple)",
   )
   .option(
     "--root <path>",
@@ -123,7 +123,10 @@ Examples:
 program
   .command("process")
   .description("Investigate candidates with an AI agent")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option(
+    "--project-id <id>",
+    "Project identifier (default: the only project in deepsec.config.ts; required if there are multiple)",
+  )
   .option("--run-id <id>", "Resume a specific processing run")
   .option("--agent <type>", "Agent plugin type (claude-agent-sdk, codex)", "claude-agent-sdk")
   .option(
@@ -151,14 +154,17 @@ program
 program
   .command("report")
   .description("Generate a markdown + JSON report from current analysis state.")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option("--project-id <id>", "Project identifier (omit for all projects)")
   .option("--run-id <id>", "Filter to a specific run's results")
   .action(reportCommand);
 
 program
   .command("revalidate")
   .description("Re-check existing findings for false positives")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option(
+    "--project-id <id>",
+    "Project identifier (default: the only project in deepsec.config.ts; required if there are multiple)",
+  )
   .option("--run-id <id>", "Resume a specific revalidation run")
   .option("--agent <type>", "Agent plugin type (claude-agent-sdk, codex)", "claude-agent-sdk")
   .option(
@@ -184,7 +190,10 @@ program
 program
   .command("enrich")
   .description("Enrich files with git history + ownership oracle")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option(
+    "--project-id <id>",
+    "Project identifier (default: the only project in deepsec.config.ts; required if there are multiple)",
+  )
   .option("--filter <prefix>", "Only enrich files matching path prefix")
   .option(
     "--min-severity <sev>",
@@ -197,7 +206,10 @@ program
 program
   .command("triage")
   .description("Classify findings by priority (P0/P1/P2/skip) — lightweight, no code reading")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option(
+    "--project-id <id>",
+    "Project identifier (default: the only project in deepsec.config.ts; required if there are multiple)",
+  )
   .option("--severity <sev>", "Severity to triage (default: MEDIUM)", "MEDIUM")
   .option("--model <model>", "Model to use (default: claude-sonnet-4-6 — cheaper)")
   .option("--force", "Re-triage already-triaged findings")
@@ -208,7 +220,10 @@ program
 program
   .command("status")
   .description("Show current state of the project mirror")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option(
+    "--project-id <id>",
+    "Project identifier (default: the only project in deepsec.config.ts; required if there are multiple)",
+  )
   .action(statusCommand);
 
 program
@@ -262,7 +277,10 @@ const sandboxCmd = program
   )
   .allowUnknownOption()
   .allowExcessArguments(true)
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option(
+    "--project-id <id>",
+    "Project identifier (default: the only project in deepsec.config.ts; required if there are multiple)",
+  )
   .option("--sandboxes <n>", "Number of parallel sandboxes (default: 1)", parseInt)
   .option("--vcpus <n>", "vCPUs per sandbox (default: 2, max: 8)", parseInt)
   .option("--detach", "Launch sandboxes and exit immediately (collect results later)")

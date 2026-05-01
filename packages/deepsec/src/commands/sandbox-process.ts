@@ -1,4 +1,5 @@
 import { BOLD, CYAN, DIM, GREEN, RED, RESET } from "../formatters.js";
+import { resolveProjectId } from "../resolve-project-id.js";
 import { checkStatus, collect, launch, orchestrate } from "../sandbox/orchestrator.js";
 import type { SandboxConfig, SandboxSubcommand } from "../sandbox/types.js";
 
@@ -12,7 +13,7 @@ const VALID_COMMANDS: SandboxSubcommand[] = [
 ];
 
 interface SandboxOpts {
-  projectId: string;
+  projectId?: string;
   sandboxes?: number;
   vcpus?: number;
   snapshotId?: string;
@@ -57,13 +58,17 @@ export function extractReinvestigate(args: string[]): boolean | number | undefin
   return true;
 }
 
-function buildConfig(subcommand: SandboxSubcommand, opts: SandboxOpts): SandboxConfig {
+function buildConfig(
+  subcommand: SandboxSubcommand,
+  projectId: string,
+  opts: SandboxOpts,
+): SandboxConfig {
   const args = opts.args ?? [];
   const concurrency = parseInt(extractFlag(args, "--concurrency") ?? "4", 10) || 4;
   // Auto-derive vCPUs from concurrency if not explicitly set (max 8, must be even)
   const vcpus = opts.vcpus ?? Math.min(Math.ceil(concurrency / 2) * 2, 8);
   return {
-    projectId: opts.projectId,
+    projectId,
     command: subcommand,
     sandboxCount: opts.sandboxes ?? 1,
     vcpus,
@@ -139,7 +144,8 @@ export async function sandboxCommand(subcommand: string, opts: SandboxOpts) {
     process.exit(1);
   }
 
-  const config = buildConfig(subcommand as SandboxSubcommand, opts);
+  const projectId = resolveProjectId(opts.projectId);
+  const config = buildConfig(subcommand as SandboxSubcommand, projectId, opts);
 
   console.log(
     `${BOLD}Sandbox${RESET} — ${CYAN}${config.command}${RESET} — ${BOLD}${config.projectId}${RESET}`,
@@ -172,31 +178,22 @@ export async function sandboxCommand(subcommand: string, opts: SandboxOpts) {
 }
 
 async function sandboxCollectCommand(opts: SandboxOpts) {
-  if (!opts.projectId) {
-    console.error("--project-id is required");
-    process.exit(1);
-  }
+  const projectId = resolveProjectId(opts.projectId);
   if (!opts.runId) {
     console.log(`Use --run-id to specify which run to collect. Available runs:`);
-    await checkStatus(opts.projectId, undefined, console.log);
+    await checkStatus(projectId, undefined, console.log);
     return;
   }
 
-  console.log(
-    `${BOLD}Sandbox Collect${RESET} — ${BOLD}${opts.projectId}${RESET} — run ${opts.runId}`,
-  );
+  console.log(`${BOLD}Sandbox Collect${RESET} — ${BOLD}${projectId}${RESET} — run ${opts.runId}`);
   console.log();
 
   const startTime = Date.now();
-  const results = await collect(opts.projectId, opts.runId, makeLogger(startTime));
+  const results = await collect(projectId, opts.runId, makeLogger(startTime));
   printResults(results, startTime);
 }
 
 async function sandboxStatusCommand(opts: SandboxOpts) {
-  if (!opts.projectId) {
-    console.error("--project-id is required");
-    process.exit(1);
-  }
-
-  await checkStatus(opts.projectId, opts.runId, console.log);
+  const projectId = resolveProjectId(opts.projectId);
+  await checkStatus(projectId, opts.runId, console.log);
 }

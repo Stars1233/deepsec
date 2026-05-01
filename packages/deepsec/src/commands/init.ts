@@ -86,9 +86,10 @@ export function initCommand(opts: InitOpts) {
   printAgentPrompt(registered.id, registered.targetRel);
   console.log();
   console.log(`  Then run:`);
-  console.log(`    pnpm deepsec scan    --project-id ${registered.id}`);
-  console.log(`    pnpm deepsec process --project-id ${registered.id}`);
+  console.log(`    pnpm deepsec scan`);
+  console.log(`    pnpm deepsec process`);
   console.log();
+  console.log(`  ${DIM}# --project-id is auto-resolved while there's only one project.${RESET}`);
   console.log(`  ${DIM}# Register another codebase later: deepsec init-project <root>${RESET}`);
 }
 
@@ -176,11 +177,15 @@ Currently configured project: \`${id}\` (target: \`${targetRel}\`).
 ## Daily commands
 
 \`\`\`bash
-pnpm deepsec scan        --project-id ${id}
-pnpm deepsec process     --project-id ${id} --concurrency 5
-pnpm deepsec revalidate  --project-id ${id} --concurrency 5  # cuts FP rate
-pnpm deepsec export      --project-id ${id} --format md-dir --out ./findings
+pnpm deepsec scan
+pnpm deepsec process     --concurrency 5
+pnpm deepsec revalidate  --concurrency 5                  # cuts FP rate
+pnpm deepsec export      --format md-dir --out ./findings
 \`\`\`
+
+\`--project-id\` is auto-resolved while there's only one project in
+\`deepsec.config.ts\`. Once you've added a second project, pass
+\`--project-id ${id}\` (or whichever id you want) explicitly.
 
 \`scan\` is free (regex only). \`process\` is the AI stage (≈$0.30/file
 on Opus by default). Run state goes to \`data/${id}/\`.

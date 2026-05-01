@@ -466,6 +466,53 @@ export default defineConfig({
     }
   });
 
+  it("scan auto-resolves --project-id when config has one project", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "deepsec-init-"));
+    const workspace = path.join(tmp, "audits");
+    const targetRoot = path.join(tmp, "solo");
+    fs.mkdirSync(targetRoot);
+    fs.writeFileSync(path.join(targetRoot, "x.ts"), "export const y = 1;\n");
+    try {
+      runBundle(["init", workspace, targetRoot]);
+      fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(workspace, "node_modules"), "dir");
+      // No --project-id flag — config has one project, auto-resolved.
+      const { status, stdout, stderr } = runBundle(["scan"], { cwd: workspace });
+      expect(status, `stdout: ${stdout}\nstderr: ${stderr}`).toBe(0);
+      expect(stdout).toContain("Scanning");
+      expect(stdout).toContain("for project");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("scan errors clearly when config has multiple projects and no --project-id", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "deepsec-init-"));
+    const workspace = path.join(tmp, "audits");
+    const a = path.join(tmp, "a");
+    const b = path.join(tmp, "b");
+    fs.mkdirSync(a);
+    fs.mkdirSync(b);
+    try {
+      runBundle(["init", workspace, a]);
+      fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(workspace, "node_modules"), "dir");
+      // Append a second project entry above the marker.
+      const cfgPath = path.join(workspace, "deepsec.config.ts");
+      const orig = fs.readFileSync(cfgPath, "utf-8");
+      const updated = orig.replace(
+        /(\s*\/\/ <deepsec:projects-insert-above>)/,
+        `\n    { id: "second", root: "../b" },$1`,
+      );
+      fs.writeFileSync(cfgPath, updated);
+
+      const { status, stderr } = runBundle(["scan"], { cwd: workspace });
+      expect(status).not.toBe(0);
+      expect(stderr).toContain("Multiple projects");
+      expect(stderr).toContain("Pass --project-id");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("scan errors clearly when --root points at a nonexistent path", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "deepsec-init-"));
     try {

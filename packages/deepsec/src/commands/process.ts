@@ -2,6 +2,7 @@ import { readProjectConfig } from "@deepsec/core";
 import { process as processRun } from "@deepsec/processor";
 import { defaultModelForAgent } from "../agent-defaults.js";
 import { BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW } from "../formatters.js";
+import { resolveProjectId } from "../resolve-project-id.js";
 
 function logProgress(progress: {
   type: string;
@@ -66,7 +67,7 @@ function parseCsv(v: string | undefined): string[] | undefined {
 }
 
 export async function processCommand(opts: {
-  projectId: string;
+  projectId?: string;
   runId?: string;
   agent?: string;
   model?: string;
@@ -82,9 +83,10 @@ export async function processCommand(opts: {
   onlySlugs?: string;
   skipSlugs?: string;
 }) {
+  const projectId = resolveProjectId(opts.projectId);
   const onlySlugs = parseCsv(opts.onlySlugs);
   const skipSlugs = parseCsv(opts.skipSlugs);
-  const project = readProjectConfig(opts.projectId);
+  const project = readProjectConfig(projectId);
   const effectiveRoot = opts.root ?? project.rootPath;
   const agentType = opts.agent ?? "claude-agent-sdk";
   const model = opts.model ?? defaultModelForAgent(agentType);
@@ -104,7 +106,7 @@ export async function processCommand(opts: {
     reinvestigate = n;
   }
 
-  console.log(`${BOLD}Processing${RESET} project ${BOLD}${opts.projectId}${RESET}`);
+  console.log(`${BOLD}Processing${RESET} project ${BOLD}${projectId}${RESET}`);
   console.log(`  Agent: ${agentType} (${model})`);
   console.log(`  Root: ${effectiveRoot}${opts.root ? " (override)" : ""}`);
   if (opts.manifest) {
@@ -126,7 +128,7 @@ export async function processCommand(opts: {
   console.log();
 
   const result = await processRun({
-    projectId: opts.projectId,
+    projectId,
     runId: opts.runId,
     agentType,
     config: { model, ...(opts.maxTurns ? { maxTurns: opts.maxTurns } : {}) },
@@ -146,5 +148,5 @@ export async function processCommand(opts: {
   console.log(`  Analyses: ${result.analysisCount}`);
   console.log(`  Findings: ${result.findingCount}`);
   console.log();
-  console.log(`Next: ${DIM}pnpm deepsec report --project-id ${opts.projectId}${RESET}`);
+  console.log(`Next: ${DIM}pnpm deepsec report --project-id ${projectId}${RESET}`);
 }

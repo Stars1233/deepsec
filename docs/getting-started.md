@@ -73,21 +73,21 @@ scanned source file), `runs/`, plus `project.json` and the optional
 [data-layout.md](data-layout.md) for the full schema.
 
 ```bash
-pnpm deepsec scan --project-id my-app
+pnpm deepsec scan
 ```
 
-The `--root` is resolved from `deepsec.config.ts` (or, for projects
-that have already been scanned once, from `data/<id>/project.json`).
-Pass `--root <path>` to override — useful for one-off scans against a
-different checkout, or for first-time scans of a project that isn't in
-the config yet.
+`--project-id` is auto-resolved when the config has a single project
+(the common case). Pass `--project-id <id>` once you've registered
+more than one project. Pass `--root <path>` to override the resolved
+path — useful for one-off scans against a different checkout.
 
-`scan` runs ~110 regex matchers across the codebase. No AI calls, no cost.
-On a 2,000-file project it takes ~15s. Output goes to `data/my-app/files/`
-as one JSON file per scanned source file (called a `FileRecord`).
+`scan` runs ~110 regex matchers across the codebase. No AI calls, no
+cost. On a 2,000-file project it takes ~15s. Output goes to
+`data/<id>/files/` as one JSON file per scanned source file (called a
+`FileRecord`).
 
 ```bash
-pnpm deepsec status --project-id my-app
+pnpm deepsec status
 ```
 
 shows the current state: how many files were scanned, how many are
@@ -96,7 +96,7 @@ pending AI investigation, etc.
 ## Run the AI investigation
 
 ```bash
-pnpm deepsec process --project-id my-app --concurrency 5
+pnpm deepsec process --concurrency 5
 ```
 
 This is where it gets expensive. Defaults: Claude Opus, 5 files per batch,
@@ -117,7 +117,7 @@ calibrate before committing to the full pass.
 For a cheaper backend:
 
 ```bash
-pnpm deepsec process --project-id my-app --agent codex --model gpt-5.5
+pnpm deepsec process --agent codex --model gpt-5.5
 ```
 
 Codex is the OpenAI-flavored backend. Same prompt, same JSON output,
@@ -129,8 +129,8 @@ models.
 ## Triage and revalidate
 
 ```bash
-pnpm deepsec triage --project-id my-app --severity HIGH
-pnpm deepsec revalidate --project-id my-app --min-severity HIGH
+pnpm deepsec triage --severity HIGH
+pnpm deepsec revalidate --min-severity HIGH
 ```
 
 - **triage**: classifies findings P0/P1/P2 without re-reading the code.
@@ -144,8 +144,8 @@ Both optional, but worth running on the HIGH/CRITICAL set.
 ## Get the findings out
 
 ```bash
-pnpm deepsec export --project-id my-app --format md-dir --out ./findings
-pnpm deepsec export --project-id my-app --format json   --out findings.json
+pnpm deepsec export --format md-dir --out ./findings
+pnpm deepsec export --format json   --out findings.json
 ```
 
 `md-dir` writes one markdown file per finding under
@@ -155,8 +155,12 @@ suitable for piping to a downstream issue tracker.
 For a quick aggregate look:
 
 ```bash
-pnpm deepsec metrics --project-id my-app
+pnpm deepsec metrics
 ```
+
+(Each of these commands accepts `--project-id <id>` if your config has
+multiple projects; the auto-resolution only kicks in when there's
+exactly one.)
 
 ## Next
 

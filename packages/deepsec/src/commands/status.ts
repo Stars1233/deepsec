@@ -1,18 +1,20 @@
 import type { FileStatus, ProjectConfig } from "@deepsec/core";
 import { listRuns, loadAllFileRecords, readProjectConfig } from "@deepsec/core";
 import { BOLD, CYAN, DIM, formatDuration, GREEN, RED, RESET, YELLOW } from "../formatters.js";
+import { resolveProjectId } from "../resolve-project-id.js";
 
-export async function statusCommand(opts: { projectId: string }) {
+export async function statusCommand(opts: { projectId?: string }) {
+  const projectId = resolveProjectId(opts.projectId);
   let project: ProjectConfig;
   try {
-    project = readProjectConfig(opts.projectId);
+    project = readProjectConfig(projectId);
   } catch {
-    console.log(`No project found for ${BOLD}${opts.projectId}${RESET}`);
+    console.log(`No project found for ${BOLD}${projectId}${RESET}`);
     return;
   }
 
-  const records = loadAllFileRecords(opts.projectId);
-  const runs = listRuns(opts.projectId);
+  const records = loadAllFileRecords(projectId);
+  const runs = listRuns(projectId);
 
   const statusCounts: Record<FileStatus, number> = {
     pending: 0,
@@ -31,7 +33,7 @@ export async function statusCommand(opts: { projectId: string }) {
   const highBug = allFindings.filter((f) => f.severity === "HIGH_BUG").length;
   const bug = allFindings.filter((f) => f.severity === "BUG").length;
 
-  console.log(`${BOLD}Project: ${opts.projectId}${RESET}`);
+  console.log(`${BOLD}Project: ${projectId}${RESET}`);
   console.log(`  Root: ${project.rootPath}`);
   console.log(`  Files tracked: ${records.length}`);
   console.log();

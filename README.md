@@ -67,11 +67,14 @@ prompt (replace `<id>` with the project id `init` printed):
 Then scan from inside `.deepsec/`:
 
 ```bash
-pnpm deepsec scan        --project-id <id>
-pnpm deepsec process     --project-id <id> --concurrency 5
-pnpm deepsec revalidate  --project-id <id> --concurrency 5     # optional, cuts FP rate
-pnpm deepsec export      --project-id <id> --format md-dir --out ./findings
+pnpm deepsec scan
+pnpm deepsec process     --concurrency 5
+pnpm deepsec revalidate  --concurrency 5                       # optional, cuts FP rate
+pnpm deepsec export      --format md-dir --out ./findings
 ```
+
+(`--project-id` is auto-resolved when the config has one project. Pass
+`--project-id <id>` once you've registered more.)
 
 `scan` is free (regex only). `process` is the expensive AI stage
 (≈$0.30/file on Opus by default — see
