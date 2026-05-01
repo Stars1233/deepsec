@@ -77,7 +77,7 @@ const PARTITIONABLE_COMMANDS = new Set(["process", "revalidate"]);
  * NOT by `pnpm-workspace.yaml`, so we don't accidentally pick the user's
  * parent monorepo if they happen to have one above `.deepsec/`.
  */
-export function resolveDeepsecAppContext(): { root: string; mode: DeepsecMode } {
+function resolveDeepsecAppContext(): { root: string; mode: DeepsecMode } {
   let dir = path.dirname(fileURLToPath(import.meta.url));
   while (dir !== path.dirname(dir)) {
     const pkgPath = path.join(dir, "package.json");
