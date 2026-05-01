@@ -223,6 +223,7 @@ async function bootstrapAndSpawn(
         agentType: config.agentType,
         vcpus: config.vcpus,
         timeout: config.timeout,
+        mode: ctx.mode,
         allowedHosts: config.allowedHosts,
         onLog: (msg) => onLog(`[sandbox-${idx}] ${msg}`),
       });

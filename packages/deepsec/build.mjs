@@ -59,6 +59,15 @@ cpSync(resolve(repoRoot, "samples"), resolve(distDir, "samples"), {
   filter: (src) => !/(^|\/)data(\/|$)/.test(src) && !/(^|\/)node_modules(\/|$)/.test(src),
 });
 
+// The request-proxy is a standalone .mjs that runs on the sandbox worker
+// (not bundled into cli.mjs — it executes in its own node process). Ship it
+// verbatim so installed-mode workers can spawn it from node_modules/deepsec/.
+mkdirSync(resolve(distDir, "sandbox"), { recursive: true });
+cpSync(
+  resolve(__dirname, "src/sandbox/request-proxy.mjs"),
+  resolve(distDir, "sandbox/request-proxy.mjs"),
+);
+
 // README.md and LICENSE live at the workspace root for repo browsing.
 // `files` in package.json names them at the package root, so stage them.
 cpSync(resolve(repoRoot, "README.md"), resolve(__dirname, "README.md"));
@@ -67,6 +76,7 @@ cpSync(resolve(repoRoot, "LICENSE"), resolve(__dirname, "LICENSE"));
 console.log("\nBundle complete:");
 console.log("  dist/cli.mjs");
 console.log("  dist/config.mjs");
+console.log("  dist/sandbox/request-proxy.mjs");
 console.log("  dist/docs/");
 console.log("  dist/samples/");
 console.log("  README.md");

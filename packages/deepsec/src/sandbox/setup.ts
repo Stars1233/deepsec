@@ -51,7 +51,15 @@ const COMMAND_ENV_KEYS: Record<string, string[]> = {
 
 const PROXY_PORT = 8787;
 const PROXY_URL = `http://127.0.0.1:${PROXY_PORT}`;
-const PROXY_SCRIPT = `${DEEPSEC_DIR}/packages/deepsec/src/sandbox/request-proxy.mjs`;
+// Path differs by upload mode (see DeepsecMode):
+//   dev       — uploaded source workspace, proxy lives at its source location
+//   installed — user's `.deepsec/` workspace; after `pnpm install` the deepsec
+//               package is materialized under node_modules/deepsec/, with the
+//               proxy script bundled into dist/ by build.mjs.
+const PROXY_SCRIPT_BY_MODE: Record<DeepsecMode, string> = {
+  dev: `${DEEPSEC_DIR}/packages/deepsec/src/sandbox/request-proxy.mjs`,
+  installed: `${DEEPSEC_DIR}/node_modules/deepsec/dist/sandbox/request-proxy.mjs`,
+};
 const CODEX_HOME = "/vercel/sandbox/.codex";
 
 function buildSandboxEnv(command?: string, agentType?: string): Record<string, string> {
@@ -259,6 +267,8 @@ interface SpawnOptions {
   agentType?: string;
   vcpus: number;
   timeout: number;
+  /** Source repo vs. user's `.deepsec/` install — see DeepsecMode docstring */
+  mode: DeepsecMode;
   /** Extra hostnames to allow through the worker's egress firewall, on top of the AI host derived from base URLs */
   allowedHosts?: string[];
   onLog: (msg: string) => void;
@@ -302,18 +312,23 @@ export async function spawnFromSnapshot(opts: SpawnOptions): Promise<Sandbox> {
   // to the gateway without any body mutation, so we skip the proxy entirely
   // when agent=codex — saves a hop and avoids base-url rewriting bugs.
   if (opts.agentType !== "codex") {
-    await startRequestProxy(sandbox, opts.onLog);
+    await startRequestProxy(sandbox, opts.mode, opts.onLog);
   }
 
   return sandbox;
 }
 
-async function startRequestProxy(sandbox: Sandbox, onLog: (msg: string) => void): Promise<void> {
+async function startRequestProxy(
+  sandbox: Sandbox,
+  mode: DeepsecMode,
+  onLog: (msg: string) => void,
+): Promise<void> {
+  const proxyScript = PROXY_SCRIPT_BY_MODE[mode];
   // Background-launch the proxy. Using nohup + setsid + redirecting stdio so
   // the process survives the runCommand's lifecycle.
   await sandbox.runCommand({
     cmd: "sh",
-    args: ["-c", `nohup node ${PROXY_SCRIPT} > /tmp/request-proxy.log 2>&1 &`],
+    args: ["-c", `nohup node ${proxyScript} > /tmp/request-proxy.log 2>&1 &`],
   });
 
   // Wait until the port accepts connections (up to ~5s). If it never comes
