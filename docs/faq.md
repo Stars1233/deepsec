@@ -2,31 +2,35 @@
 
 ## How should I install deepsec?
 
-Make one **dedicated audits workspace** next to your codebases and
-scaffold it with `npx deepsec init`. One workspace covers many
-target repos via `projects[]` in `deepsec.config.ts`:
+deepsec lives in a `.deepsec/` directory at the root of the repo you
+want to scan, checked into git so teammates inherit project context.
+From the codebase's repo root:
 
 ```bash
-cd ~/wherever-your-repos-live
-npx deepsec init security-audits
-cd security-audits
+npx deepsec init       # creates .deepsec/ + registers this repo
+cd .deepsec
 pnpm install
 ```
 
-Your `deepsec.config.ts`, `INFO.md` files, plugins, and `data/` for every
-project all live in this one workspace. Works for any target language;
-the workspace is its own version-controllable thing.
+`.deepsec/` has its own `package.json` and `node_modules/` — separate
+from the parent repo's lockfile and tooling. The parent repo only
+needs to know `.deepsec/` exists.
 
-**Don't** `pnpm add deepsec` *inside* the codebase you're scanning
-— it pulls in `@anthropic-ai/claude-agent-sdk`, `@openai/codex-sdk`,
-and `@vercel/sandbox`, heavy SDKs that don't belong in your
-application's lockfile, and forces a JS/TS install in repos that
-may not have one.
+To scan another codebase from the same `.deepsec/`, run
+`pnpm deepsec init-project <path>`. Each project gets its own
+`data/<id>/` subdirectory.
 
-The polyglot reality is the reason: deepsec scans Go, Python, Lua,
-Terraform, and more. The target repos don't need `node_modules` —
-the *audits workspace* does, and that's a separate, small directory
-you create just for this.
+### What about non-JS codebases?
+
+deepsec is polyglot (TS, Go, Python, Lua, Terraform, …). The parent
+repo doesn't need to be a Node project — `.deepsec/` is self-contained
+and only needs `pnpm` (or `npm` / `yarn`) inside that one directory.
+
+### `.gitignore` policy
+
+The scaffold's `.deepsec/.gitignore` keeps `INFO.md`, `SETUP.md`, and
+`deepsec.config.ts` tracked so teammates inherit project context, but
+ignores generated state (`data/*/files/`, `data/*/runs/`, etc.).
 
 ## How much does it cost?
 

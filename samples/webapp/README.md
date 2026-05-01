@@ -20,17 +20,18 @@ Files (read in this order):
 
 ## How this relates to `deepsec init`
 
-`deepsec init` produces a **minimal** scaffold — config + INFO.md +
-AGENTS.md + env/gitignore. No custom matchers, no plugin.
+`deepsec init` produces a **minimal** scaffold inside `.deepsec/` —
+config + INFO.md + SETUP.md + env/gitignore. No custom matchers,
+no plugin.
 
-This sample is what the workspace can grow into. Read it for shape;
-don't copy it as your starting point. The intended flow:
+This sample is what `.deepsec/` can grow into over time. Read it for
+shape; don't copy it as your starting point. The intended flow:
 
 ```bash
-# Start minimal
-npx deepsec init security-audits ./my-app
-cd security-audits && pnpm install
-# Let your agent fill INFO.md per AGENTS.md, then scan.
+# Start minimal: from your repo root.
+npx deepsec init
+cd .deepsec && pnpm install
+# Let your agent fill INFO.md, then scan.
 
 # Later, when a true-positive finding suggests a matcher worth keeping,
 # look at this sample's matchers/*.ts for the shape, and read

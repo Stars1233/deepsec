@@ -14,20 +14,16 @@ interface InitOpts {
 }
 
 export function initCommand(opts: InitOpts) {
-  if (!opts.workspace || !opts.targetRoot) {
-    console.error(
-      `Usage: deepsec init <workspace-dir> <target-root> [--id <project-id>] [--force]\n\n` +
-        `  <workspace-dir>  Where to create the new scanning workspace\n` +
-        `  <target-root>    Path to the codebase you want to scan first\n\n` +
-        `Example:\n  deepsec init security-audits ../my-app`,
-    );
-    process.exit(1);
-  }
+  // Defaults: scaffold `.deepsec/` inside the current codebase, with the
+  // codebase itself as the first project. Override either by passing
+  // explicit positional args.
+  const workspaceArg = opts.workspace ?? ".deepsec";
+  const targetArg = opts.targetRoot ?? ".";
 
-  const workspaceDir = path.resolve(process.cwd(), opts.workspace);
+  const workspaceDir = path.resolve(process.cwd(), workspaceArg);
   let targetAbs: string;
   try {
-    targetAbs = requireExistingDir(opts.targetRoot, "<target-root>");
+    targetAbs = requireExistingDir(targetArg, "<target-root>");
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -48,7 +44,7 @@ export function initCommand(opts: InitOpts) {
 
   // Workspace skeleton: empty config (with marker), README, AGENTS, env.
   fs.mkdirSync(workspaceDir, { recursive: true });
-  writeFile(workspaceDir, "package.json", packageJson(path.basename(workspaceDir)));
+  writeFile(workspaceDir, "package.json", packageJson(workspacePackageName(workspaceDir)));
   writeFile(workspaceDir, "deepsec.config.ts", emptyConfigTs());
   writeFile(workspaceDir, "AGENTS.md", workspaceAgentsMd());
   writeFile(workspaceDir, ".env.local", envLocal());
@@ -119,6 +115,15 @@ function writeFile(dir: string, name: string, content: string) {
   fs.writeFileSync(p, content);
 }
 
+/**
+ * npm rejects package names starting with a dot. `.deepsec` (the default
+ * workspace dir) would land that way; sanitize it.
+ */
+function workspacePackageName(workspaceDir: string): string {
+  const base = path.basename(workspaceDir);
+  return base.startsWith(".") ? "deepsec-workspace" : base;
+}
+
 function packageJson(name: string): string {
   return `${JSON.stringify(
     {
@@ -150,19 +155,23 @@ export default defineConfig({
 }
 
 function readmeMd(id: string, targetRel: string): string {
-  return `# deepsec audits workspace
+  return `# deepsec
 
-This directory holds deepsec scan state for one or more codebases.
-Currently configured: \`${id}\` (target: \`${targetRel}\`).
+This directory holds the [deepsec](https://www.npmjs.com/package/deepsec)
+config for the parent repo. Checked into git so teammates inherit
+project context (auth shape, threat model, custom matchers); generated
+scan output is gitignored.
+
+Currently configured project: \`${id}\` (target: \`${targetRel}\`).
 
 ## Setup
 
-1. \`pnpm install\` — pulls in [deepsec](https://www.npmjs.com/package/deepsec).
-2. Add your AI Gateway token to \`.env.local\` (see [vercel-setup
-   docs](https://github.com/vercel/deepsec/blob/main/docs/vercel-setup.md)).
-3. Open this workspace in your coding agent (Claude Code, Cursor, …).
-   It picks up \`data/${id}/SETUP.md\` and fills in
-   \`data/${id}/INFO.md\` from the codebase.
+1. \`pnpm install\` — installs deepsec.
+2. Add your AI Gateway token to \`.env.local\`. See
+   \`node_modules/deepsec/dist/docs/vercel-setup.md\` after install.
+3. Open the parent repo in your coding agent (Claude Code, Cursor, …)
+   and have it follow \`data/${id}/SETUP.md\` to fill in
+   \`data/${id}/INFO.md\`.
 
 ## Daily commands
 
@@ -174,57 +183,43 @@ pnpm deepsec export      --project-id ${id} --format md-dir --out ./findings
 \`\`\`
 
 \`scan\` is free (regex only). \`process\` is the AI stage (≈$0.30/file
-on Opus by default). State lives in \`data/${id}/\`.
+on Opus by default). Run state goes to \`data/${id}/\`.
 
 ## Adding another project
 
+To scan another codebase from this same \`.deepsec/\`:
+
 \`\`\`bash
-pnpm deepsec init-project ../another-codebase
+pnpm deepsec init-project ../some-other-package   # path relative to .deepsec/
 \`\`\`
 
-Appends a new entry to \`deepsec.config.ts\` (above the insert marker)
-and writes a fresh \`data/<id>/{INFO.md,SETUP.md,project.json}\`. Open
-the new \`SETUP.md\` in your agent to fill in INFO.md. Each project
-gets its own \`data/<id>/\` subdirectory.
+Appends an entry to \`deepsec.config.ts\` and writes
+\`data/<id>/{INFO.md,SETUP.md,project.json}\`. Open the new SETUP.md
+in your agent to fill in INFO.md.
 
 ## Layout
 
 \`\`\`
 deepsec.config.ts        Project list (one entry per scanned repo)
 data/${id}/
-  INFO.md                Repo context — auto-injected into AI prompts
-  SETUP.md               Per-project agent setup prompt (delete after use)
-  project.json           Auto-managed: rootPath, githubUrl
-  files/                 One JSON per scanned source file
-  runs/                  Run metadata
-  reports/               Generated markdown reports
-AGENTS.md                Workspace-level pointer for coding agents
+  INFO.md                Repo context — checked into git, hand-curated
+  SETUP.md               Agent setup prompt — checked in, deletable
+  project.json           Generated (gitignored)
+  files/                 One JSON per scanned source file (gitignored)
+  runs/                  Run metadata (gitignored)
+  reports/               Generated markdown reports (gitignored)
+AGENTS.md                Pointer for coding agents
 .env.local               Tokens (gitignored)
-\`\`\`
-
-## Versioning the workspace + scan state
-
-This workspace's \`.gitignore\` excludes \`data/\`. Scan output (findings,
-run metadata, INFO.md) is often organization-sensitive and shouldn't
-share a git history with the workspace tooling.
-
-The recommended pattern is **\`data/\` as its own git repo**:
-
-\`\`\`bash
-git init                 # the workspace itself (config, AGENTS.md, plugins)
-cd data && git init      # the scan state, separately
 \`\`\`
 
 ## Docs
 
-After \`pnpm install\`, the full deepsec docs ship at
-\`node_modules/deepsec/dist/docs/\`:
+After \`pnpm install\`:
 
-- \`getting-started.md\`, \`configuration.md\`, \`models.md\`,
-  \`writing-matchers.md\`, \`plugins.md\`, \`architecture.md\`,
-  \`data-layout.md\`, \`vercel-setup.md\`, \`faq.md\`
+- Skill: \`node_modules/deepsec/SKILL.md\`
+- Full docs: \`node_modules/deepsec/dist/docs/{getting-started,configuration,models,writing-matchers,plugins,architecture,data-layout,vercel-setup,faq}.md\`
 
-Or browse them on
+Or browse on
 [GitHub](https://github.com/vercel/deepsec/tree/main/docs).
 `;
 }
@@ -268,8 +263,16 @@ ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh
 }
 
 function gitignore(): string {
+  // Keep curated files (INFO.md, SETUP.md) tracked so teammates inherit
+  // project context. Ignore the regenerable / heavy / sensitive bits.
   return `node_modules/
 .env*.local
-data/
+
+# Scan output — regenerated by \`deepsec scan\` / \`process\`. INFO.md
+# and SETUP.md (manually edited) stay tracked.
+data/*/files/
+data/*/runs/
+data/*/reports/
+data/*/project.json
 `;
 }

@@ -20,49 +20,42 @@ left off.
 
 ## Get started
 
-deepsec is polyglot (TS, Go, Python, Lua, Terraform, …). Make a
-directory next to the codebase you want to scan — separate from the
-codebase, so deepsec's dependencies don't bleed into your build. One
-such directory holds many projects.
+deepsec is polyglot (TS, Go, Python, Lua, Terraform, …). It lives in
+a `.deepsec/` directory at the root of the codebase you scan —
+checked into the same git repo, so the config, project context
+(auth shape, threat model), and per-project setup prompts travel
+with the code. Generated scan output (findings, run metadata) stays
+gitignored.
 
-```
-parent/
-├── security-audits/   ← deepsec lives here (config + scan state)
-├── my-app/            ← target codebase
-└── another-service/   ← another target codebase (added later)
-```
-
-From inside your first target codebase, step out one level and
-scaffold:
+From the root of the codebase you want to scan:
 
 ```bash
-cd ..                                              # out of my-app/
-npx deepsec init security-audits ./my-app          # creates the dir + registers my-app
-cd security-audits
-pnpm install                                       # installs deepsec from npm
+npx deepsec init       # creates .deepsec/ with this repo as the first project
+cd .deepsec
+pnpm install           # installs deepsec from npm
 ```
 
 The scaffold is minimal: `deepsec.config.ts` (one `projects[]` entry
-pointing at `../my-app`), `data/my-app/INFO.md` (template — repo
-context that gets injected into every AI prompt), `data/my-app/SETUP.md`
-(per-project agent setup prompt), `package.json`, workspace `AGENTS.md`,
-`.env.local`, `.gitignore`. No custom matchers by default — add them
-later when a real finding suggests one.
+pointing at `..`), `data/<id>/INFO.md` (template — repo context that
+gets injected into every AI prompt), `data/<id>/SETUP.md` (per-project
+agent setup prompt), `package.json`, `AGENTS.md`, `.env.local`,
+`.gitignore`. No custom matchers by default — add them later when a
+real finding suggests one.
 
 Two things to do before scanning:
 
 **1. Paste your AI Gateway token into `.env.local`.** See
 [docs/vercel-setup.md](docs/vercel-setup.md) for how to get one.
 
-**2. Have your coding agent fill in `data/my-app/INFO.md`.** Open the
-`security-audits/` directory in Claude Code / Cursor / Codex CLI / etc.,
-then paste this prompt (replace `my-app` with your project id and
-`../my-app` with your target's relative path):
+**2. Have your coding agent fill in `data/<id>/INFO.md`.** Open the
+codebase in Claude Code / Cursor / Codex CLI / etc., then paste this
+prompt (replace `<id>` with the project id `init` printed):
 
-> Read `node_modules/deepsec/SKILL.md` to understand the tool. Then
-> read `data/my-app/SETUP.md` and follow it: open `../my-app`, skim
-> its README + any AGENTS.md/CLAUDE.md + a handful of representative
-> code files, then replace each section of `data/my-app/INFO.md`.
+> Read `.deepsec/node_modules/deepsec/SKILL.md` to understand the
+> tool. Then read `.deepsec/data/<id>/SETUP.md` and follow it:
+> skim this repo's README, any AGENTS.md/CLAUDE.md, and a handful
+> of representative code files, then replace each section of
+> `.deepsec/data/<id>/INFO.md`.
 >
 > Keep it SHORT — target 50–100 lines total. Pick 3–5 examples per
 > section, not exhaustive enumeration. Name primitives (auth helpers,
@@ -71,28 +64,37 @@ then paste this prompt (replace `my-app` with your project id and
 > INFO.md is injected into every scan batch; verbose context dilutes
 > signal.
 
-Then scan:
+Then scan from inside `.deepsec/`:
 
 ```bash
-pnpm deepsec scan        --project-id my-app
-pnpm deepsec process     --project-id my-app --concurrency 5
-pnpm deepsec revalidate  --project-id my-app --concurrency 5     # optional, cuts FP rate
-pnpm deepsec export      --project-id my-app --format md-dir --out ./findings
+pnpm deepsec scan        --project-id <id>
+pnpm deepsec process     --project-id <id> --concurrency 5
+pnpm deepsec revalidate  --project-id <id> --concurrency 5     # optional, cuts FP rate
+pnpm deepsec export      --project-id <id> --format md-dir --out ./findings
 ```
 
 `scan` is free (regex only). `process` is the expensive AI stage
 (≈$0.30/file on Opus by default — see
 [docs/models.md](docs/models.md) to pick a cheaper model). Run state
-goes to `data/my-app/`, gitignored by default; schema in
+goes to `.deepsec/data/<id>/`; everything except curated
+`INFO.md`/`SETUP.md` is gitignored. Schema in
 [docs/data-layout.md](docs/data-layout.md).
 
-To register another codebase in this same audits dir, run
-`pnpm deepsec init-project ../another-service` and paste the same
-prompt above (with the new id) into your agent.
+### Why in-repo?
 
-(`scan`'s `--root` is resolved from `deepsec.config.ts` — pass
-`--root <path>` to override for a one-off scan against a different
-checkout.)
+Putting `.deepsec/` *inside* the repo means teammates inherit the
+project context (auth shape, threat model in `INFO.md`, custom
+matchers) just by cloning. The scaffold's `.gitignore` keeps the
+config + curated context tracked and the bulky scan output ignored.
+
+`.deepsec/` doesn't pollute the parent repo's lockfile or tooling —
+it's a self-contained directory with its own `package.json`. The
+parent repo only needs to be aware that `.deepsec/` exists; nothing
+else.
+
+To scan a *different* codebase from the same `.deepsec/`, run
+`pnpm deepsec init-project <path>` (e.g. for a sibling service,
+sub-package, etc.) and paste the same prompt above with the new id.
 
 ## Docs
 

@@ -1,8 +1,8 @@
 {
-  "name": "security-audits",
+  "name": "deepsec-workspace-sample",
   "version": "0.1.0",
   "private": true,
-  "description": "deepsec audits workspace for the webapp sample.",
+  "description": "deepsec workspace for the webapp sample.",
   "type": "module",
   "dependencies": {
     "deepsec": "^0.1.0"

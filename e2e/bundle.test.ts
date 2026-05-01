@@ -203,7 +203,7 @@ export default defineConfig({
 
       // README.md: usage instructions for humans.
       const readmeMd = fs.readFileSync(path.join(workspace, "README.md"), "utf-8");
-      expect(readmeMd).toContain("deepsec audits workspace");
+      expect(readmeMd).toContain("# deepsec");
       expect(readmeMd).toContain("pnpm deepsec scan");
       expect(readmeMd).toContain("init-project");
 
@@ -229,10 +229,35 @@ export default defineConfig({
       expect(projectJson.projectId).toBe("my-app");
       expect(projectJson.rootPath).toBeTruthy();
 
-      // .gitignore: simple — data/ is excluded entirely (it's its own git repo).
+      // .gitignore: keeps INFO.md/SETUP.md trackable, ignores generated state.
       const gitignore = fs.readFileSync(path.join(workspace, ".gitignore"), "utf-8");
-      expect(gitignore).toContain("data/");
-      expect(gitignore).not.toContain("data/*/files/");
+      expect(gitignore).toContain("data/*/files/");
+      expect(gitignore).toContain("data/*/runs/");
+      expect(gitignore).toContain("data/*/project.json");
+      // Bare `data/` line should NOT be present — that would shadow INFO.md.
+      expect(gitignore).not.toMatch(/^data\/$/m);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("init with no args defaults to .deepsec/ inside cwd, target = .", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "deepsec-init-"));
+    const repo = path.join(tmp, "my-repo");
+    fs.mkdirSync(repo);
+    fs.writeFileSync(path.join(repo, "package.json"), "{}\n");
+    try {
+      const { status, stdout, stderr } = runBundle(["init"], { cwd: repo });
+      expect(status, `stdout: ${stdout}\nstderr: ${stderr}`).toBe(0);
+      // Workspace lands at .deepsec/ inside the repo.
+      const workspace = path.join(repo, ".deepsec");
+      expect(fs.existsSync(path.join(workspace, "deepsec.config.ts"))).toBe(true);
+      // Project id is derived from cwd basename.
+      expect(fs.existsSync(path.join(workspace, "data/my-repo/INFO.md"))).toBe(true);
+      // Config's `root` is the parent (target = .).
+      const configSrc = fs.readFileSync(path.join(workspace, "deepsec.config.ts"), "utf-8");
+      expect(configSrc).toContain('id: "my-repo"');
+      expect(configSrc).toContain('root: ".."');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -374,7 +399,7 @@ export default defineConfig({
     try {
       const { status, stderr } = runBundle(["init-project", target], { cwd: tmp });
       expect(status).not.toBe(0);
-      expect(stderr).toContain("No deepsec workspace");
+      expect(stderr).toContain("No .deepsec/ workspace");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

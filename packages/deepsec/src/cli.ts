@@ -25,13 +25,39 @@ const program = new Command();
 program
   .name("deepsec")
   .description("AI-powered vulnerability scanner for any codebase")
-  .version("0.1.0");
+  .version("0.1.0")
+  .addHelpText(
+    "after",
+    `
+Quickstart:
+  cd <your-repo>                 first, in the codebase you want to scan
+  npx deepsec init               scaffold .deepsec/ + register this repo
+  cd .deepsec && pnpm install
+  pnpm deepsec scan    --project-id <id>
+  pnpm deepsec process --project-id <id>
+
+  See \`deepsec init --help\` and the docs at:
+    https://github.com/vercel/deepsec`,
+  );
 
 program
-  .command("init <workspace> <target-root>")
-  .description("Bootstrap a scanning workspace seeded with one project + agent setup prompt")
+  .command("init [workspace] [target-root]")
+  .description("Scaffold .deepsec/ in your repo and register the first project")
   .option("--id <project-id>", "Override the project id (default: basename of <target-root>)")
-  .option("--force", "Write into a non-empty workspace directory")
+  .option("--force", "Allow writing into a non-empty workspace directory")
+  .addHelpText(
+    "after",
+    `
+Defaults:
+  workspace     .deepsec
+  target-root   .              (the codebase you ran init from)
+  project id    derived from the target's directory basename
+
+Examples:
+  $ npx deepsec init                          # most common — from your repo root
+  $ npx deepsec init audits ../my-app         # custom workspace + target
+  $ npx deepsec init .deepsec . --id my-app   # override the auto-derived id`,
+  )
   .action(
     (
       workspace: string | undefined,
@@ -48,22 +74,50 @@ program
 
 program
   .command("init-project <target-root>")
-  .description("Register an additional project in the current workspace")
+  .description("Register an additional project in the current .deepsec workspace")
   .option("--id <project-id>", "Override the project id (default: basename of <target-root>)")
   .option("--force", "Overwrite an existing project of the same id")
+  .addHelpText(
+    "after",
+    `
+Run from inside a .deepsec/ workspace. Appends an entry to
+deepsec.config.ts (above the marker comment) and writes a fresh
+data/<id>/{INFO.md,SETUP.md,project.json}.
+
+Examples:
+  $ pnpm deepsec init-project ../another-app
+  $ pnpm deepsec init-project ./packages/api --id api`,
+  )
   .action((targetRoot: string | undefined, opts: { id?: string; force?: boolean }) =>
     initProjectCommand({ targetRoot, id: opts.id, force: opts.force }),
   );
 
 program
   .command("scan")
-  .description("Scan a codebase for candidate vulnerability sites")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .description("Run regex matchers across a project to find candidate vulnerability sites")
+  .requiredOption(
+    "--project-id <id>",
+    "Project identifier (must be registered via init / init-project)",
+  )
   .option(
     "--root <path>",
-    "Root path to scan (overrides config / project.json; required for first-time scans)",
+    "Override the project's root (rare — use only for sandbox runs or one-off scans against a different checkout)",
   )
-  .option("--matchers <slugs>", "Comma-separated list of matcher slugs to use")
+  .option(
+    "--matchers <slugs>",
+    "Comma-separated matcher slugs to run (default: all registered matchers)",
+  )
+  .addHelpText(
+    "after",
+    `
+The root is resolved from deepsec.config.ts (or data/<id>/project.json
+once a project has been scanned). Pass --root only when overriding.
+
+Examples:
+  $ pnpm deepsec scan --project-id my-app
+  $ pnpm deepsec scan --project-id my-app --matchers auth-bypass,xss
+  $ pnpm deepsec scan --project-id my-app --root ../checkout-on-pr-branch`,
+  )
   .action(scanCommand);
 
 program
@@ -242,21 +296,24 @@ const sandboxAllCmd = program
     >[1]);
   });
 
-process.on("unhandledRejection", (err) => {
-  console.error("\nFatal error:", err instanceof Error ? err.message : err);
-  if (err instanceof Error && err.stack) {
+/**
+ * Surface error messages cleanly. Stack traces are noise for user-facing
+ * failures (bad input, missing config, network errors). Set
+ * `DEEPSEC_DEBUG=1` to see them when debugging.
+ */
+function printFatal(err: unknown): never {
+  const verbose = process.env.DEEPSEC_DEBUG === "1";
+  console.error(`\n${err instanceof Error ? err.message : err}`);
+  if (verbose && err instanceof Error && err.stack) {
     console.error(err.stack);
+  } else if (!verbose) {
+    console.error("\n(set DEEPSEC_DEBUG=1 for a stack trace)");
   }
   process.exit(1);
-});
+}
 
-process.on("uncaughtException", (err) => {
-  console.error("\nFatal error:", err.message);
-  if (err.stack) {
-    console.error(err.stack);
-  }
-  process.exit(1);
-});
+process.on("unhandledRejection", printFatal);
+process.on("uncaughtException", printFatal);
 
 async function main() {
   await loadConfig();

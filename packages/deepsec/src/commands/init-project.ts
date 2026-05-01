@@ -238,27 +238,24 @@ You can delete this file once setup is complete.
 `;
 }
 
-/* CLI entry point */
+/* CLI entry point — commander enforces <target-root> presence via the
+   command spec, so we don't re-validate it here. */
 export function initProjectCommand(opts: {
   targetRoot?: string;
   id?: string;
   force?: boolean;
 }): void {
-  if (!opts.targetRoot) {
-    console.error(
-      `Usage: deepsec init-project <target-root> [--id <project-id>] [--force]\n\n` +
-        `  <target-root>  Path to the codebase to register as a new project.\n\n` +
-        `Run from inside a workspace created by \`deepsec init\`.`,
-    );
-    process.exit(1);
-  }
-
   const workspaceDir = findWorkspaceRoot(process.cwd());
   if (!workspaceDir) {
     console.error(
-      `No deepsec workspace found in or above ${process.cwd()}.\n` +
-        `  Run \`deepsec init <workspace> <target>\` first.`,
+      `No .deepsec/ workspace found in or above ${process.cwd()}.\n` +
+        `  Run \`deepsec init\` from your repo root first, then cd into .deepsec/\n` +
+        `  before adding more projects.`,
     );
+    process.exit(1);
+  }
+  if (!opts.targetRoot) {
+    // Defensive: commander should have caught this. Keeps the type checker happy.
     process.exit(1);
   }
 

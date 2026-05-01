@@ -8,38 +8,35 @@ and how to read the output.
 Requires **Node.js 22+**. The recipe below uses pnpm; npm and yarn
 work the same way.
 
-deepsec ships on npm. Make one **dedicated audits workspace** next to the
-codebases you're scanning. The workspace is N:1 — one workspace, many
-target repos as `projects[]` entries.
+deepsec lives in a `.deepsec/` directory at the root of your codebase
+— checked into the same git repo, so config, project context, and
+custom matchers travel with the code. Generated scan output (findings,
+runs, reports) stays gitignored.
 
-```
-parent/
-├── security-audits/   ← dedicated audits workspace
-├── my-app/            ← a target codebase
-└── another-service/   ← another target codebase
-```
-
-From inside your first target codebase, step out and scaffold a
-workspace seeded with that codebase as the first project:
+From the root of the codebase you want to scan:
 
 ```bash
-cd ..                                              # out of my-app/
-npx deepsec init security-audits ./my-app          # workspace + first project
-cd security-audits
+npx deepsec init                                   # creates .deepsec/ + registers this repo
+cd .deepsec
 pnpm install                                       # installs deepsec
 ```
 
-`init` lays down a minimal scaffold: `package.json`, `deepsec.config.ts`
-(with one `projects[]` entry pointing at `./my-app`, id derived from the
-target's basename), an `INFO.md` template with section placeholders, an
-`AGENTS.md` with a setup prompt for your coding agent, plus `.env.local`
-and `.gitignore`. There are no custom matchers in the scaffold — add
-those later, only when a real finding shapes one for you.
+`init` lays down a minimal scaffold inside `.deepsec/`: `package.json`,
+`deepsec.config.ts` (one `projects[]` entry pointing at `..`, id
+derived from your repo dir's basename), `data/<id>/INFO.md` (template
+with section placeholders), `data/<id>/SETUP.md` (per-project agent
+prompt), workspace-level `AGENTS.md`, `.env.local`, `.gitignore`. No
+custom matchers in the scaffold — add those later, only when a real
+finding shapes one for you.
 
 Open `.env.local` and fill in `ANTHROPIC_AUTH_TOKEN`. Get one from
 [Vercel AI Gateway](https://vercel.com/ai-gateway) (one token covers
 Claude and Codex) or set `ANTHROPIC_BASE_URL=https://api.anthropic.com`
 to use Anthropic directly. See [vercel-setup.md](vercel-setup.md).
+
+To scan a *different* codebase from the same `.deepsec/`, run
+`pnpm deepsec init-project <path>` — relative paths resolve against
+`.deepsec/`'s parent.
 
 ## Fill in INFO.md
 
@@ -48,41 +45,24 @@ AI prompt for every batch — vague content here means vague findings.
 
 ### Option A: let your coding agent do it (recommended)
 
-Open `security-audits/` in your coding agent (Claude Code, Codex,
-Cursor, Aider, …). The scaffold's `AGENTS.md` *is* the prompt — agents
-that read `AGENTS.md` automatically (most do) will pick it up and run
-through the workflow:
+Open the *parent repo* (the codebase you scanned, not `.deepsec/`) in
+your coding agent (Claude Code, Codex, Cursor, …) and paste the prompt
+that `deepsec init` printed. It walks the agent through:
 
-1. Read `node_modules/deepsec/SKILL.md` (the deepsec skill — maps every
-   doc topic to a file under `node_modules/deepsec/dist/docs/`).
-2. Open the target codebase, read its README + `package.json` + any
-   `AGENTS.md`/`CLAUDE.md`, plus the actual code.
-3. Replace each section in `INFO.md` with concrete content (helper
-   names, file globs, middleware names — not generic boilerplate).
+1. Read `.deepsec/node_modules/deepsec/SKILL.md` to understand the tool.
+2. Open `.deepsec/data/<id>/SETUP.md` for project-specific instructions.
+3. Skim the codebase, then replace each section of
+   `.deepsec/data/<id>/INFO.md`.
 
-If your agent doesn't auto-load `AGENTS.md`, paste its contents as the
-prompt yourself.
+The same prompt is shown in the project root README and is what `init`
+prints to stdout after scaffold.
 
 ### Option B: by hand
 
-The scaffold's `deepsec.config.ts` already loads `INFO.md` via
-`infoMarkdown`, so just edit the file directly. The minimum config
-shape, if you'd rather start from scratch:
-
-```ts
-// deepsec.config.ts
-import { defineConfig } from "deepsec/config";
-
-export default defineConfig({
-  projects: [
-    { id: "my-app", root: "../my-app" },
-  ],
-});
-```
-
-Strip out what you don't need from the scaffold. `INFO.md` is
-optional but worth keeping — even a paragraph noticeably improves the
-AI's output.
+The processor auto-loads `data/<id>/INFO.md` from the workspace's data
+dir. Edit it directly — no extra wiring needed in
+`deepsec.config.ts`. INFO.md is optional but worth keeping; even a
+paragraph noticeably improves the AI's output.
 
 ## Run a scan
 
