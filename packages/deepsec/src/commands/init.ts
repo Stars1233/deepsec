@@ -99,12 +99,16 @@ export function initCommand(opts: InitOpts) {
 function printAgentPrompt(id: string, targetRel: string): void {
   const lines = [
     `Read node_modules/deepsec/SKILL.md to understand the tool. Then`,
-    `read data/${id}/SETUP.md and follow it: open ${targetRel}, read`,
-    `its README + package.json (or go.mod / pyproject.toml) + any`,
-    `AGENTS.md / CLAUDE.md, then replace each section in`,
-    `data/${id}/INFO.md with concrete content — auth helpers,`,
-    `middleware names, threat model, false-positive sources. Be`,
-    `specific: name actual functions and file globs, not boilerplate.`,
+    `read data/${id}/SETUP.md and follow it: open ${targetRel}, skim`,
+    `its README + AGENTS.md/CLAUDE.md + a handful of representative`,
+    `code files, then replace each section of data/${id}/INFO.md.`,
+    ``,
+    `Keep it SHORT — target 50–100 lines total. Pick 3–5 examples per`,
+    `section, not exhaustive enumeration. Name primitives (auth`,
+    `helpers, middleware) but no line numbers. Skip generic CWE`,
+    `categories — built-in matchers cover those. Cover only what's`,
+    `project-specific. INFO.md is injected into every scan batch;`,
+    `verbose context dilutes signal.`,
   ];
   for (const l of lines) console.log(`    ${BOLD}>${RESET} ${l}`);
 }

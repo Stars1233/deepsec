@@ -60,16 +60,16 @@ then paste this prompt (replace `my-app` with your project id and
 `../my-app` with your target's relative path):
 
 > Read `node_modules/deepsec/SKILL.md` to understand the tool. Then
-> read `data/my-app/SETUP.md` for project-specific instructions and
-> follow them: open the target codebase at `../my-app`, read its
-> README, package.json (or `go.mod` / `pyproject.toml`), any
-> existing `AGENTS.md` / `CLAUDE.md`, and the actual code, then
-> replace each section in `data/my-app/INFO.md` with concrete
-> content — auth helpers, middleware names, threat model,
-> false-positive sources. Be specific: name actual functions and
-> file globs, not generic security boilerplate. INFO.md is injected
-> into every AI scan batch, so vague content here means vague
-> findings.
+> read `data/my-app/SETUP.md` and follow it: open `../my-app`, skim
+> its README + any AGENTS.md/CLAUDE.md + a handful of representative
+> code files, then replace each section of `data/my-app/INFO.md`.
+>
+> Keep it SHORT — target 50–100 lines total. Pick 3–5 examples per
+> section, not exhaustive enumeration. Name primitives (auth helpers,
+> middleware) but no line numbers. Skip generic CWE categories —
+> built-in matchers cover those. Cover only what's project-specific.
+> INFO.md is injected into every scan batch; verbose context dilutes
+> signal.
 
 Then scan:
 

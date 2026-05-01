@@ -149,28 +149,33 @@ function insertProjectIntoConfig(configPath: string, id: string, root: string): 
 function infoMdTemplate(id: string): string {
   return `# ${id}
 
-> Replace each section with real content. See \`SETUP.md\` (next to this
-> file) for guidance and a coding-agent prompt that fills this in for you.
+> Replace each section. Target 50–100 lines total. INFO.md is injected
+> into every AI scan batch — verbose context dilutes signal.
+> See \`SETUP.md\` for the rubric + a coding-agent prompt.
 
 ## What this codebase does
 
-<one paragraph describing the app and its purpose>
+<one paragraph: what the app does, what stack, what users it serves>
 
 ## Auth shape
 
-<auth helpers, middleware patterns, session shape, RBAC primitives>
+<the 3–5 most important auth primitives BY NAME. The scanner doesn't
+need every helper — just enough to recognize when one is missing>
 
 ## Threat model
 
-<what an attacker would want from this codebase, plus likely vectors>
+<2–4 sentences: what an attacker would want, ranked by impact.
+Skip generic security boilerplate>
 
 ## Project-specific patterns to flag
 
-<entry points, sensitive helpers, untrusted input shapes, anything domain-specific>
+<3–5 patterns unique to THIS codebase, one example each. Avoid
+generic CWE categories — built-in matchers cover those>
 
 ## Known false-positives
 
-<test fixtures, generated code, intentionally-unsafe code paths to ignore>
+<3–5 paths/patterns that look risky but are intentional —
+fork-specific stubs, dev fixtures, intended-public endpoints>
 `;
 }
 
@@ -189,14 +194,30 @@ still has placeholder sections.
    \`configuration.md\`, and \`writing-matchers.md\` (skim the rest).
 
 2. **Fill in \`data/${id}/INFO.md\`.** It's auto-injected into the AI
-   prompt for every batch. Source material:
-   - \`${targetRel}/README.md\`
-   - \`${targetRel}/package.json\` (or \`go.mod\`, \`pyproject.toml\`, etc.)
-   - any \`AGENTS.md\` / \`CLAUDE.md\` in \`${targetRel}\`
-   - the actual code under \`${targetRel}/\` — *open files*, don't guess
+   prompt for every batch — keep it short and selective.
 
-   Be concrete. Name actual functions, file globs, middleware names. Avoid
-   generic security boilerplate. Vague INFO.md → vague findings.
+   **Length budget: 50–100 lines total.** Verbose context dilutes
+   signal in the scanner's prompt window. The goal is "what would a
+   reviewer miss if they didn't read this?", not exhaustive enumeration.
+
+   **Per-section rubric**:
+   - Pick 3–5 representative items per section. **Don't list every
+     file, helper, or callsite** — pick the patterns.
+   - Name primitives by their public name (e.g. \`withAuthentication\`,
+     \`auth.can()\`, \`isTeamAdmin\`). **No line numbers.** Don't enumerate
+     more than 5 paths in any list.
+   - Skip generic CWE categories — built-in matchers already cover
+     "SSRF", "SQL injection", "XSS". Cover what's *project-specific*:
+     internal auth helpers, custom middleware names, fork-specific
+     stubs, intended-public endpoints.
+   - One short paragraph or 3–5 short bullets per section. Not both.
+
+   Source material (read in this order, stop when you have enough):
+   - \`${targetRel}/README.md\`
+   - any \`AGENTS.md\` / \`CLAUDE.md\` in \`${targetRel}\`
+   - \`${targetRel}/package.json\` (or \`go.mod\`, \`pyproject.toml\`, etc.)
+   - 5–10 representative code files (entry points, auth helpers) — not
+     a full code tour.
 
 3. **(Optional) Add custom matchers** for repo-specific patterns the
    built-in matchers won't catch. Read
@@ -269,12 +290,16 @@ export function initProjectCommand(opts: {
 function printAgentPrompt(id: string, targetRel: string): void {
   const lines = [
     `Read node_modules/deepsec/SKILL.md to understand the tool. Then`,
-    `read data/${id}/SETUP.md and follow it: open ${targetRel}, read`,
-    `its README + package.json (or go.mod / pyproject.toml) + any`,
-    `AGENTS.md / CLAUDE.md, then replace each section in`,
-    `data/${id}/INFO.md with concrete content — auth helpers,`,
-    `middleware names, threat model, false-positive sources. Be`,
-    `specific: name actual functions and file globs, not boilerplate.`,
+    `read data/${id}/SETUP.md and follow it: open ${targetRel}, skim`,
+    `its README + AGENTS.md/CLAUDE.md + a handful of representative`,
+    `code files, then replace each section of data/${id}/INFO.md.`,
+    ``,
+    `Keep it SHORT — target 50–100 lines total. Pick 3–5 examples per`,
+    `section, not exhaustive enumeration. Name primitives (auth`,
+    `helpers, middleware) but no line numbers. Skip generic CWE`,
+    `categories — built-in matchers cover those. Cover only what's`,
+    `project-specific. INFO.md is injected into every scan batch;`,
+    `verbose context dilutes signal.`,
   ];
   for (const l of lines) console.log(`    ${BOLD}>${RESET} ${l}`);
 }
