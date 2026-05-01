@@ -429,7 +429,7 @@ export default defineConfig({
     }
   });
 
-  it("scan resolves --root from the config when omitted", () => {
+  it("scan resolves --root from the config when omitted (sibling layout)", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "deepsec-init-"));
     const workspace = path.join(tmp, "audits");
     const targetRoot = path.join(tmp, "my-app");
@@ -449,6 +449,43 @@ export default defineConfig({
       // scan writes a run-meta entry; presence proves --root was resolved.
       const runsDir = path.join(workspace, "data/my-app/runs");
       expect(fs.existsSync(runsDir)).toBe(true);
+      expect(fs.readdirSync(runsDir).length).toBeGreaterThan(0);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("scan resolves --root from the config (nested .deepsec/ layout)", () => {
+    // Default `init` flow: workspace lands at .deepsec/ inside the codebase,
+    // project root is ".." (the parent repo). Scan from inside .deepsec/
+    // should resolve `..` against the workspace dir → the codebase itself.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "deepsec-init-"));
+    const repo = path.join(tmp, "my-repo");
+    fs.mkdirSync(repo);
+    fs.writeFileSync(path.join(repo, "package.json"), "{}\n");
+    fs.writeFileSync(path.join(repo, "app.ts"), 'console.log("hi");\n');
+    try {
+      const init = runBundle(["init"], { cwd: repo });
+      expect(init.status, `init: ${init.stdout}\n${init.stderr}`).toBe(0);
+
+      const workspace = path.join(repo, ".deepsec");
+      // Sanity: config.ts points at the parent repo via `..`.
+      const configSrc = fs.readFileSync(path.join(workspace, "deepsec.config.ts"), "utf-8");
+      expect(configSrc).toContain('root: ".."');
+
+      fs.symlinkSync(path.join(ROOT, "node_modules"), path.join(workspace, "node_modules"), "dir");
+
+      // No --project-id, no --root: both auto-resolve from the loaded config.
+      const scan = runBundle(["scan"], { cwd: workspace });
+      expect(scan.status, `scan: ${scan.stdout}\n${scan.stderr}`).toBe(0);
+      expect(scan.stdout).toContain("Scan complete");
+
+      // scan writes a run-meta entry; presence proves --root resolved.
+      const runsDir = path.join(workspace, "data/my-repo/runs");
+      expect(
+        fs.existsSync(runsDir),
+        `runsDir missing. scan stdout:\n${scan.stdout}\n--\nstderr:\n${scan.stderr}`,
+      ).toBe(true);
       expect(fs.readdirSync(runsDir).length).toBeGreaterThan(0);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

@@ -1,13 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { dataDir, readProjectConfig } from "@deepsec/core";
+import { dataDir, getConfigPath, readProjectConfig } from "@deepsec/core";
 import { Sandbox } from "@vercel/sandbox";
 import { downloadResults } from "./download.js";
 import { partitionFiles } from "./partitioner.js";
 import {
   createBootstrapSnapshot,
   DEEPSEC_DIR,
+  type DeepsecMode,
   spawnFromSnapshot,
   TARGET_DIR,
   type UploadBundle,
@@ -26,51 +27,116 @@ import { DATA_EXCLUDES, DEEPSEC_APP_EXCLUDES, makeTarball, TARGET_EXCLUDES } fro
 /** Commands where we inject --root to point at the sandbox target checkout */
 const NEEDS_ROOT = new Set(["process", "revalidate", "scan"]);
 
-function buildCommandArgs(config: SandboxConfig, manifestPath: string | null): string[] {
-  const args = ["packages/deepsec/src/cli.ts", config.command, "--project-id", config.projectId];
+/**
+ * Build the (cmd, args) pair to run a deepsec subcommand inside the sandbox.
+ * Differs by mode: dev runs the source via tsx; installed runs the bin shim
+ * left behind by `pnpm install` in the uploaded `.deepsec/` workspace.
+ */
+function buildSandboxInvocation(
+  config: SandboxConfig,
+  mode: DeepsecMode,
+  manifestPath: string | null,
+): { cmd: string; args: string[] } {
+  const tail: string[] = [config.command, "--project-id", config.projectId];
 
   if (NEEDS_ROOT.has(config.command)) {
-    args.push("--root", TARGET_DIR);
+    tail.push("--root", TARGET_DIR);
   }
   if (manifestPath) {
-    args.push("--manifest", manifestPath);
+    tail.push("--manifest", manifestPath);
   }
-
   for (const arg of config.extraArgs) {
-    args.push(...arg.split(/\s+/).filter(Boolean));
+    tail.push(...arg.split(/\s+/).filter(Boolean));
   }
 
-  return args;
+  if (mode === "installed") {
+    return { cmd: "node_modules/.bin/deepsec", args: tail };
+  }
+  return { cmd: "npx", args: ["tsx", "packages/deepsec/src/cli.ts", ...tail] };
 }
 
 const PARTITIONABLE_COMMANDS = new Set(["process", "revalidate"]);
 
 // --- Upload prep ---
 
-function resolveDeepsecAppRoot(): string {
+/**
+ * Decide what directory to tarball as the "deepsec app" for sandbox upload,
+ * and which CLI invocation pattern to use inside the sandbox. Two modes:
+ *
+ *   - **dev**: this CLI is running from the source repo (the deepsec package
+ *     is found OUTSIDE any `node_modules/`). Tarball the source workspace
+ *     root (the dir with `pnpm-workspace.yaml`) so the full monorepo +
+ *     lockfile ship over. Workers run `tsx packages/deepsec/src/cli.ts`.
+ *
+ *   - **installed**: this CLI is running from `node_modules/deepsec/` inside
+ *     a user's `.deepsec/` workspace. Tarball that workspace dir (parent of
+ *     `deepsec.config.ts`) — it's a one-package npm project; the sandbox
+ *     re-installs `deepsec` from npm. Workers run `node_modules/.bin/deepsec`.
+ *
+ * The deepsec package is identified by `package.json:name === "deepsec"`,
+ * NOT by `pnpm-workspace.yaml`, so we don't accidentally pick the user's
+ * parent monorepo if they happen to have one above `.deepsec/`.
+ */
+export function resolveDeepsecAppContext(): { root: string; mode: DeepsecMode } {
   let dir = path.dirname(fileURLToPath(import.meta.url));
   while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) return dir;
+    const pkgPath = path.join(dir, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        if (pkg.name === "deepsec") {
+          if (dir.includes(`${path.sep}node_modules${path.sep}`)) {
+            // Installed: ship the user's .deepsec/ workspace, not the
+            // node_modules/deepsec package itself. The workspace has its
+            // own package.json that depends on `deepsec`, so the sandbox
+            // re-resolves it (no fragile node_modules tarball).
+            const cfg = getConfigPath();
+            if (!cfg) {
+              throw new Error(
+                "deepsec sandbox: no deepsec.config.ts found above cwd. Sandbox needs a deepsec workspace (run `deepsec init` first).",
+              );
+            }
+            return { root: path.dirname(cfg), mode: "installed" };
+          }
+          // Dev: walk up from the package to the workspace root.
+          let wsDir = path.dirname(dir);
+          while (wsDir !== path.dirname(wsDir)) {
+            if (fs.existsSync(path.join(wsDir, "pnpm-workspace.yaml"))) {
+              return { root: wsDir, mode: "dev" };
+            }
+            wsDir = path.dirname(wsDir);
+          }
+          // Source package without a monorepo above — uncommon, but treat
+          // as installed (one-package install in the sandbox).
+          return { root: dir, mode: "installed" };
+        }
+      } catch {
+        // Unreadable / non-JSON package.json — keep walking.
+      }
+    }
     dir = path.dirname(dir);
   }
-  throw new Error("Could not locate deepsec workspace root from sandbox orchestrator");
+  throw new Error(
+    "Could not locate the deepsec package directory (no package.json with name 'deepsec' found in any ancestor)",
+  );
 }
 
 async function prepareUploads(
   config: SandboxConfig,
+  mode: DeepsecMode,
+  appRoot: string,
   onLog: (msg: string) => void,
 ): Promise<UploadBundle> {
   const project = readProjectConfig(config.projectId);
   const localTargetRoot = project.rootPath;
   const localDataDir = dataDir(config.projectId);
-  const localAppRoot = resolveDeepsecAppRoot();
 
   onLog(
-    `Preparing upload bundles (app=${localAppRoot}, target=${localTargetRoot}, data=${localDataDir})...`,
+    `Preparing upload bundles (mode=${mode}, app=${appRoot}, target=${localTargetRoot}, data=${localDataDir})...`,
   );
 
   const [app, target, data] = await Promise.all([
-    makeTarball(localAppRoot, DEEPSEC_APP_EXCLUDES, onLog),
+    makeTarball(appRoot, DEEPSEC_APP_EXCLUDES, onLog),
     makeTarball(localTargetRoot, TARGET_EXCLUDES, onLog),
     makeTarball(localDataDir, DATA_EXCLUDES, onLog),
   ]);
@@ -85,12 +151,14 @@ interface BootstrapAndSpawnResult {
   partitions: string[][];
   totalFiles: number;
   snapshotId: string | null;
+  mode: DeepsecMode;
 }
 
 async function bootstrapAndSpawn(
   config: SandboxConfig,
   onLog: (msg: string) => void,
 ): Promise<BootstrapAndSpawnResult> {
+  const ctx = resolveDeepsecAppContext();
   const usePartitioning = PARTITIONABLE_COMMANDS.has(config.command);
   let partitions: string[][];
   let totalFiles: number;
@@ -111,7 +179,7 @@ async function bootstrapAndSpawn(
 
     if (totalFiles === 0) {
       onLog("No files to process.");
-      return { instances: [], partitions: [], totalFiles: 0, snapshotId: null };
+      return { instances: [], partitions: [], totalFiles: 0, snapshotId: null, mode: ctx.mode };
     }
 
     onLog(
@@ -129,13 +197,14 @@ async function bootstrapAndSpawn(
   // Step 1: get a snapshot — either use one the user passed, or build a fresh one
   let snapshotId = config.snapshotId ?? null;
   if (!snapshotId) {
-    const bundle = await prepareUploads(config, onLog);
+    const bundle = await prepareUploads(config, ctx.mode, ctx.root, onLog);
     snapshotId = await createBootstrapSnapshot({
       projectId: config.projectId,
       command: config.command,
       agentType: config.agentType,
       vcpus: config.vcpus,
       timeout: config.timeout,
+      mode: ctx.mode,
       bundle,
       onLog,
     });
@@ -186,7 +255,7 @@ async function bootstrapAndSpawn(
   });
 
   const instances = await Promise.all(spawnPromises);
-  return { instances, partitions, totalFiles, snapshotId };
+  return { instances, partitions, totalFiles, snapshotId, mode: ctx.mode };
 }
 
 // --- Dispatch: kick off command on a sandbox, return cmdId ---
@@ -194,6 +263,7 @@ async function bootstrapAndSpawn(
 async function dispatchOnSandbox(
   instance: SandboxInstance,
   config: SandboxConfig,
+  mode: DeepsecMode,
   onLog: (msg: string) => void,
 ): Promise<string | null> {
   if (instance.status === "error") return null;
@@ -208,14 +278,14 @@ async function dispatchOnSandbox(
     ]);
   }
 
-  const args = buildCommandArgs(config, manifestPath);
+  const invocation = buildSandboxInvocation(config, mode, manifestPath);
   onLog(
     `[sandbox-${index}] Dispatching: deepsec ${config.command} (${manifest.length || "all"} files)...`,
   );
 
   const cmd = await sandbox.runCommand({
-    cmd: "npx",
-    args: ["tsx", ...args],
+    cmd: invocation.cmd,
+    args: invocation.args,
     cwd: DEEPSEC_DIR,
     detached: true,
   });
@@ -226,7 +296,12 @@ async function dispatchOnSandbox(
 // --- Launch (detached) ---
 
 export async function launch(config: SandboxConfig, onLog: (msg: string) => void): Promise<string> {
-  const { instances, partitions: _p, totalFiles: _t } = await bootstrapAndSpawn(config, onLog);
+  const {
+    instances,
+    partitions: _p,
+    totalFiles: _t,
+    mode,
+  } = await bootstrapAndSpawn(config, onLog);
 
   if (instances.length === 0) {
     throw new Error("No sandboxes to launch (no files to process?)");
@@ -238,7 +313,7 @@ export async function launch(config: SandboxConfig, onLog: (msg: string) => void
   const sandboxEntries: SandboxRunState["sandboxes"] = [];
 
   for (const inst of instances) {
-    const cmdId = await dispatchOnSandbox(inst, config, onLog);
+    const cmdId = await dispatchOnSandbox(inst, config, mode, onLog);
     if (cmdId) {
       sandboxEntries.push({
         sandboxId: inst.sandboxId,
@@ -424,7 +499,7 @@ export async function orchestrate(
   config: SandboxConfig,
   onLog: (msg: string) => void,
 ): Promise<SandboxResult[]> {
-  const { instances } = await bootstrapAndSpawn(config, onLog);
+  const { instances, mode } = await bootstrapAndSpawn(config, onLog);
 
   if (instances.length === 0) return [];
 
@@ -441,7 +516,7 @@ export async function orchestrate(
         ? Promise.resolve()
         : streamDownloadLoop(inst, config.projectId, onLog, stopPoller, nudge);
 
-    const result = await runOnSandboxAttached(inst, config, onLog, nudge);
+    const result = await runOnSandboxAttached(inst, config, mode, onLog, nudge);
     const tRun = Date.now();
 
     // Stop the poller and wait for it to wind down (it may be mid-download).
@@ -577,6 +652,7 @@ const BATCH_COMPLETE_RE = /Batch \d+\/\d+ complete:/;
 async function runOnSandboxAttached(
   instance: SandboxInstance,
   config: SandboxConfig,
+  mode: DeepsecMode,
   onLog: (msg: string) => void,
   nudge?: SyncNudge,
 ): Promise<SandboxResult> {
@@ -602,14 +678,14 @@ async function runOnSandboxAttached(
       ]);
     }
 
-    const args = buildCommandArgs(config, manifestPath);
+    const invocation = buildSandboxInvocation(config, mode, manifestPath);
     onLog(
       `[sandbox-${index}] Running: deepsec ${config.command} (${manifest.length || "all"} files)...`,
     );
 
     const cmd = await sandbox.runCommand({
-      cmd: "npx",
-      args: ["tsx", ...args],
+      cmd: invocation.cmd,
+      args: invocation.args,
       cwd: DEEPSEC_DIR,
       detached: true,
     });
