@@ -37,7 +37,14 @@ interface ProjectMetrics {
   byVulnType: Record<string, number>;
   byVulnTypeTP: Record<string, number>;
   byTriage: Record<string, number>;
-  revalidation: { tp: number; fp: number; fixed: number; uncertain: number; pending: number };
+  revalidation: {
+    tp: number;
+    fp: number;
+    fixed: number;
+    uncertain: number;
+    duplicate: number;
+    pending: number;
+  };
   cost: number;
   analysisCount: number;
   tokens: TokenStats;
@@ -72,7 +79,7 @@ function getMetrics(projectId: string, minSeverity?: string): ProjectMetrics {
     byVulnType: {},
     byVulnTypeTP: {},
     byTriage: {},
-    revalidation: { tp: 0, fp: 0, fixed: 0, uncertain: 0, pending: 0 },
+    revalidation: { tp: 0, fp: 0, fixed: 0, uncertain: 0, duplicate: 0, pending: 0 },
     cost: 0,
     analysisCount: 0,
     tokens: emptyTokens(),
@@ -99,6 +106,7 @@ function getMetrics(projectId: string, minSeverity?: string): ProjectMetrics {
       } else if (verdict === "false-positive") m.revalidation.fp++;
       else if (verdict === "fixed") m.revalidation.fixed++;
       else if (verdict === "uncertain") m.revalidation.uncertain++;
+      else if (verdict === "duplicate") m.revalidation.duplicate++;
       else m.revalidation.pending++;
     }
 

@@ -56,10 +56,12 @@ export function renderPrComment(params: {
     for (const f of file.findings ?? []) {
       if (f.producedByRunId !== runId) continue;
       // PR comments surface unresolved risk only — drop anything already
-      // resolved (fixed / false-positive / accepted-risk) even if the
-      // resolution was set in the same run that produced the finding.
+      // resolved (fixed / false-positive / accepted-risk) and drop
+      // duplicates (the primary carries the canonical signal; surfacing
+      // the dupes is just noise).
       const v = f.revalidation?.verdict;
-      if (v === "accepted-risk" || v === "false-positive" || v === "fixed") continue;
+      if (v === "accepted-risk" || v === "false-positive" || v === "fixed" || v === "duplicate")
+        continue;
       findingsForRun.push({ file, finding: f });
     }
   }

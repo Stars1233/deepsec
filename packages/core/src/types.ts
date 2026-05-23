@@ -73,6 +73,7 @@ export interface RunMeta {
     falsePositives?: number;
     fixed?: number;
     uncertain?: number;
+    duplicates?: number;
   };
 }
 
@@ -169,12 +170,24 @@ export type RevalidationVerdict =
   // Manual marker (the agent never sets this): real true-positive that
   // the team has consciously chosen to accept. See the schema comment in
   // `schemas.ts` and the "Accepted risks" section of the project README.
-  | "accepted-risk";
+  | "accepted-risk"
+  // The agent flagged this finding as a duplicate of another finding in
+  // the same file. The canonical one keeps its real verdict; duplicates
+  // point at it via `duplicateOf` (the primary's `title`). The processor
+  // enforces that the primary itself is not a duplicate so each
+  // equivalence class has exactly one non-duplicate.
+  | "duplicate";
 
 export interface Revalidation {
   verdict: RevalidationVerdict;
   reasoning: string;
   adjustedSeverity?: Severity;
+  /**
+   * Set iff `verdict === "duplicate"`. Holds the `title` of the primary
+   * finding in the same file. The primary's verdict is the canonical
+   * one for the underlying issue.
+   */
+  duplicateOf?: string;
   revalidatedAt: string;
   runId: string;
   model: string;

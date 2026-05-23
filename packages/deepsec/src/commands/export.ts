@@ -450,15 +450,18 @@ export async function exportCommand(opts: {
         if (opts.onlyTruePositive && finding.revalidation?.verdict !== "true-positive") continue;
         // Default behavior: hide every "resolved" verdict. fixed = patched,
         // false-positive = not real, accepted-risk = real but consciously
-        // accepted. None of these are work the export consumer should
-        // action. Pass --include-resolved to surface them anyway (audit /
-        // history use cases). The legacy --exclude-false-positive flag is
-        // now a no-op — preserved so existing scripts don't break.
+        // accepted, duplicate = same issue as another finding in the file
+        // (the primary carries the canonical signal). None of these are
+        // work the export consumer should action. Pass --include-resolved
+        // to surface them anyway (audit / history use cases). The legacy
+        // --exclude-false-positive flag is now a no-op — preserved so
+        // existing scripts don't break.
         if (
           !opts.includeResolved &&
           (finding.revalidation?.verdict === "fixed" ||
             finding.revalidation?.verdict === "false-positive" ||
-            finding.revalidation?.verdict === "accepted-risk")
+            finding.revalidation?.verdict === "accepted-risk" ||
+            finding.revalidation?.verdict === "duplicate")
         ) {
           continue;
         }

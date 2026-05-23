@@ -81,6 +81,13 @@ export interface RevalidateVerdict {
   verdict: RevalidationVerdict;
   reasoning: string;
   adjustedSeverity?: "CRITICAL" | "HIGH" | "MEDIUM" | "HIGH_BUG" | "BUG";
+  /**
+   * Required when `verdict === "duplicate"`. `title` of the primary
+   * finding in the same file — the canonical one that should keep its
+   * real verdict. The processor rejects DUPEs that don't reference a
+   * non-DUPE primary in the same file.
+   */
+  duplicateOf?: string;
 }
 
 export interface RevalidateOutput {

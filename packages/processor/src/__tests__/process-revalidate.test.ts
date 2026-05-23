@@ -990,3 +990,331 @@ describe("processor with stub agent", () => {
     expect(stub.calls.revalidateCalls).toHaveLength(0);
   });
 });
+
+describe("revalidate() duplicate verdict", () => {
+  let prevDataRoot: string | undefined;
+
+  beforeEach(() => {
+    prevDataRoot = process.env.DEEPSEC_DATA_ROOT;
+  });
+
+  afterEach(() => {
+    if (prevDataRoot === undefined) delete process.env.DEEPSEC_DATA_ROOT;
+    else process.env.DEEPSEC_DATA_ROOT = prevDataRoot;
+    setLoadedConfig(defineConfig({ projects: [] }));
+  });
+
+  function fileWithFindings(fx: Fixture, relPath: string, titles: string[]): FileRecord {
+    const rec = pendingRecord(fx.projectId, relPath);
+    rec.status = "analyzed";
+    rec.findings = titles.map((title) => ({
+      severity: "HIGH" as const,
+      vulnSlug: "auth-bypass",
+      title,
+      description: `desc for ${title}`,
+      lineNumbers: [1],
+      recommendation: "x",
+      confidence: "high" as const,
+    }));
+    rec.analysisHistory = [
+      {
+        runId: "earlier",
+        investigatedAt: new Date().toISOString(),
+        durationMs: 1,
+        agentType: "stub",
+        model: "stub",
+        modelConfig: {},
+        findingCount: titles.length,
+      },
+    ];
+    fx.writeRecord(rec);
+    return rec;
+  }
+
+  it("applies DUPE when the referenced primary gets a non-duplicate verdict in the same batch", async () => {
+    const fx = setupProject({ files: ["app.ts"] });
+    fileWithFindings(fx, "app.ts", ["primary issue", "dupe of primary"]);
+
+    const stub = new StubAgent({
+      async *revalidateImpl() {
+        return {
+          verdicts: [
+            {
+              filePath: "app.ts",
+              title: "primary issue",
+              verdict: "true-positive" as const,
+              reasoning: "real",
+            },
+            {
+              filePath: "app.ts",
+              title: "dupe of primary",
+              verdict: "duplicate" as const,
+              reasoning: "same root cause",
+              duplicateOf: "primary issue",
+            },
+          ],
+          meta: { durationMs: 1 },
+        };
+      },
+    });
+    setLoadedConfig(
+      defineConfig({
+        projects: [{ id: fx.projectId, root: fx.targetRoot }],
+        plugins: [{ name: "stub", agents: [stub] }],
+      }),
+    );
+
+    const result = await revalidate({
+      projectId: fx.projectId,
+      agentType: "stub",
+      concurrency: 1,
+    });
+
+    const rec = fx.readRecord("app.ts");
+    const primary = rec.findings.find((f) => f.title === "primary issue");
+    const dupe = rec.findings.find((f) => f.title === "dupe of primary");
+    expect(primary?.revalidation?.verdict).toBe("true-positive");
+    expect(dupe?.revalidation?.verdict).toBe("duplicate");
+    expect(dupe?.revalidation?.duplicateOf).toBe("primary issue");
+    expect(result.truePositives).toBe(1);
+    expect(result.duplicates).toBe(1);
+    expect(result.duplicatesRejected).toBe(0);
+  });
+
+  it("applies DUPE when the primary already has a verdict from a prior run", async () => {
+    const fx = setupProject({ files: ["app.ts"] });
+    const rec = fileWithFindings(fx, "app.ts", ["primary issue", "new dupe"]);
+    // Mark the primary as already revalidated; only the new dupe should be sent
+    rec.findings[0].revalidation = {
+      verdict: "true-positive",
+      reasoning: "prior run",
+      revalidatedAt: new Date().toISOString(),
+      runId: "earlier",
+      model: "stub",
+    };
+    fx.writeRecord(rec);
+
+    const stub = new StubAgent({
+      async *revalidateImpl() {
+        return {
+          verdicts: [
+            {
+              filePath: "app.ts",
+              title: "new dupe",
+              verdict: "duplicate" as const,
+              reasoning: "same as primary",
+              duplicateOf: "primary issue",
+            },
+          ],
+          meta: { durationMs: 1 },
+        };
+      },
+    });
+    setLoadedConfig(
+      defineConfig({
+        projects: [{ id: fx.projectId, root: fx.targetRoot }],
+        plugins: [{ name: "stub", agents: [stub] }],
+      }),
+    );
+
+    const result = await revalidate({
+      projectId: fx.projectId,
+      agentType: "stub",
+      concurrency: 1,
+    });
+
+    const after = fx.readRecord("app.ts");
+    const dupe = after.findings.find((f) => f.title === "new dupe");
+    expect(dupe?.revalidation?.verdict).toBe("duplicate");
+    expect(dupe?.revalidation?.duplicateOf).toBe("primary issue");
+    expect(result.duplicates).toBe(1);
+    expect(result.duplicatesRejected).toBe(0);
+  });
+
+  it("rejects DUPE that references a non-existent primary", async () => {
+    const fx = setupProject({ files: ["app.ts"] });
+    fileWithFindings(fx, "app.ts", ["the only one"]);
+
+    const stub = new StubAgent({
+      async *revalidateImpl() {
+        return {
+          verdicts: [
+            {
+              filePath: "app.ts",
+              title: "the only one",
+              verdict: "duplicate" as const,
+              reasoning: "claims to dupe a ghost",
+              duplicateOf: "nonexistent",
+            },
+          ],
+          meta: { durationMs: 1 },
+        };
+      },
+    });
+    setLoadedConfig(
+      defineConfig({
+        projects: [{ id: fx.projectId, root: fx.targetRoot }],
+        plugins: [{ name: "stub", agents: [stub] }],
+      }),
+    );
+
+    const result = await revalidate({
+      projectId: fx.projectId,
+      agentType: "stub",
+      concurrency: 1,
+    });
+
+    const after = fx.readRecord("app.ts");
+    expect(after.findings[0].revalidation).toBeUndefined();
+    expect(result.duplicates).toBe(0);
+    expect(result.duplicatesRejected).toBe(1);
+  });
+
+  it("rejects an all-DUPE group (no valid primary)", async () => {
+    const fx = setupProject({ files: ["app.ts"] });
+    fileWithFindings(fx, "app.ts", ["a", "b"]);
+
+    const stub = new StubAgent({
+      async *revalidateImpl() {
+        return {
+          verdicts: [
+            {
+              filePath: "app.ts",
+              title: "a",
+              verdict: "duplicate" as const,
+              reasoning: "...",
+              duplicateOf: "b",
+            },
+            {
+              filePath: "app.ts",
+              title: "b",
+              verdict: "duplicate" as const,
+              reasoning: "...",
+              duplicateOf: "a",
+            },
+          ],
+          meta: { durationMs: 1 },
+        };
+      },
+    });
+    setLoadedConfig(
+      defineConfig({
+        projects: [{ id: fx.projectId, root: fx.targetRoot }],
+        plugins: [{ name: "stub", agents: [stub] }],
+      }),
+    );
+
+    const result = await revalidate({
+      projectId: fx.projectId,
+      agentType: "stub",
+      concurrency: 1,
+    });
+
+    const after = fx.readRecord("app.ts");
+    expect(after.findings.every((f) => !f.revalidation)).toBe(true);
+    expect(result.duplicates).toBe(0);
+    expect(result.duplicatesRejected).toBe(2);
+  });
+
+  it("rejects DUPE with missing duplicateOf and self-referential DUPE", async () => {
+    const fx = setupProject({ files: ["app.ts"] });
+    fileWithFindings(fx, "app.ts", ["self", "blank"]);
+
+    const stub = new StubAgent({
+      async *revalidateImpl() {
+        return {
+          verdicts: [
+            {
+              filePath: "app.ts",
+              title: "self",
+              verdict: "duplicate" as const,
+              reasoning: "...",
+              duplicateOf: "self",
+            },
+            {
+              filePath: "app.ts",
+              title: "blank",
+              verdict: "duplicate" as const,
+              reasoning: "...",
+              // duplicateOf intentionally omitted
+            },
+          ],
+          meta: { durationMs: 1 },
+        };
+      },
+    });
+    setLoadedConfig(
+      defineConfig({
+        projects: [{ id: fx.projectId, root: fx.targetRoot }],
+        plugins: [{ name: "stub", agents: [stub] }],
+      }),
+    );
+
+    const result = await revalidate({
+      projectId: fx.projectId,
+      agentType: "stub",
+      concurrency: 1,
+    });
+
+    const after = fx.readRecord("app.ts");
+    expect(after.findings.every((f) => !f.revalidation)).toBe(true);
+    expect(result.duplicatesRejected).toBe(2);
+  });
+
+  it("accepts multiple DUPEs pointing at the same primary", async () => {
+    const fx = setupProject({ files: ["app.ts"] });
+    fileWithFindings(fx, "app.ts", ["primary", "d1", "d2"]);
+
+    const stub = new StubAgent({
+      async *revalidateImpl() {
+        return {
+          verdicts: [
+            {
+              filePath: "app.ts",
+              title: "primary",
+              verdict: "false-positive" as const,
+              reasoning: "framework protects this",
+            },
+            {
+              filePath: "app.ts",
+              title: "d1",
+              verdict: "duplicate" as const,
+              reasoning: "same",
+              duplicateOf: "primary",
+            },
+            {
+              filePath: "app.ts",
+              title: "d2",
+              verdict: "duplicate" as const,
+              reasoning: "same",
+              duplicateOf: "primary",
+            },
+          ],
+          meta: { durationMs: 1 },
+        };
+      },
+    });
+    setLoadedConfig(
+      defineConfig({
+        projects: [{ id: fx.projectId, root: fx.targetRoot }],
+        plugins: [{ name: "stub", agents: [stub] }],
+      }),
+    );
+
+    const result = await revalidate({
+      projectId: fx.projectId,
+      agentType: "stub",
+      concurrency: 1,
+    });
+
+    const after = fx.readRecord("app.ts");
+    expect(after.findings.find((f) => f.title === "primary")?.revalidation?.verdict).toBe(
+      "false-positive",
+    );
+    expect(after.findings.find((f) => f.title === "d1")?.revalidation?.verdict).toBe("duplicate");
+    expect(after.findings.find((f) => f.title === "d2")?.revalidation?.verdict).toBe("duplicate");
+    expect(result.duplicates).toBe(2);
+    expect(result.duplicatesRejected).toBe(0);
+    expect(result.falsePositives).toBe(1);
+  });
+});

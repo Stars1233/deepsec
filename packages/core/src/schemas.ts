@@ -12,9 +12,23 @@ export const revalidationSchema = z.object({
   // finding is a real true-positive, but the team has consciously chosen to
   // live with it — see the "accepted risks" section in the project README.
   // Treated like "false-positive" for PR-comment / report-default filtering.
-  verdict: z.enum(["true-positive", "false-positive", "fixed", "uncertain", "accepted-risk"]),
+  //
+  // "duplicate" means the finding describes the same underlying issue as
+  // another finding in the same file. `duplicateOf` points at the primary
+  // (canonical) finding by `title`. The primary keeps its real verdict;
+  // the processor rejects any DUPE whose `duplicateOf` is missing or
+  // points at another DUPE so each group has exactly one non-DUPE.
+  verdict: z.enum([
+    "true-positive",
+    "false-positive",
+    "fixed",
+    "uncertain",
+    "accepted-risk",
+    "duplicate",
+  ]),
   reasoning: z.string(),
   adjustedSeverity: z.enum(["CRITICAL", "HIGH", "MEDIUM", "HIGH_BUG", "BUG", "LOW"]).optional(),
+  duplicateOf: z.string().optional(),
   revalidatedAt: z.string(),
   runId: z.string(),
   model: z.string(),
@@ -207,6 +221,7 @@ export const runMetaSchema = z.object({
     falsePositives: z.number().optional(),
     fixed: z.number().optional(),
     uncertain: z.number().optional(),
+    duplicates: z.number().optional(),
   }),
 });
 

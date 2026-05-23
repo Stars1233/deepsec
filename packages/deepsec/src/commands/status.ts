@@ -62,8 +62,10 @@ export async function statusCommand(opts: { projectId?: string }) {
       const fp = validated.filter((f) => f.revalidation?.verdict === "false-positive").length;
       const fixed = validated.filter((f) => f.revalidation?.verdict === "fixed").length;
       const unc = validated.filter((f) => f.revalidation?.verdict === "uncertain").length;
+      const dup = validated.filter((f) => f.revalidation?.verdict === "duplicate").length;
+      const dupSuffix = dup > 0 ? `  ${DIM}Dupe: ${dup}${RESET}` : "";
       console.log(
-        `    Revalidated: ${validated.length}/${allFindings.length}  ${GREEN}TP: ${tp}${RESET}  ${RED}FP: ${fp}${RESET}  ${CYAN}Fixed: ${fixed}${RESET}  ${YELLOW}Uncertain: ${unc}${RESET}`,
+        `    Revalidated: ${validated.length}/${allFindings.length}  ${GREEN}TP: ${tp}${RESET}  ${RED}FP: ${fp}${RESET}  ${CYAN}Fixed: ${fixed}${RESET}  ${YELLOW}Uncertain: ${unc}${RESET}${dupSuffix}`,
       );
     }
 

@@ -109,8 +109,12 @@ export async function revalidateCommand(opts: {
 
   console.log();
   console.log(`${GREEN}Revalidation complete.${RESET} Run: ${BOLD}${result.runId}${RESET}`);
+  const dupeStr =
+    result.duplicates > 0 || result.duplicatesRejected > 0
+      ? `  ${DIM}Dupe: ${result.duplicates}${result.duplicatesRejected ? ` (${result.duplicatesRejected} rejected)` : ""}${RESET}`
+      : "";
   console.log(
-    `  ${GREEN}TP: ${result.truePositives}${RESET}  ${RED}FP: ${result.falsePositives}${RESET}  ${CYAN}Fixed: ${result.fixed}${RESET}  ${YELLOW}Uncertain: ${result.uncertain}${RESET}`,
+    `  ${GREEN}TP: ${result.truePositives}${RESET}  ${RED}FP: ${result.falsePositives}${RESET}  ${CYAN}Fixed: ${result.fixed}${RESET}  ${YELLOW}Uncertain: ${result.uncertain}${RESET}${dupeStr}`,
   );
   if (result.quotaExhausted) {
     console.log(

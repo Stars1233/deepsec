@@ -568,8 +568,16 @@ For EACH finding, perform ALL of these steps before rendering a verdict:
 - **false-positive** — Not exploitable. Name the specific mitigation.
 - **fixed** — Was real but has been patched. Cite the change.
 - **uncertain** — Can't determine. Explain what's ambiguous.
+- **duplicate** — This finding describes the **same underlying vulnerability** at the **same code location** as another finding in the **same file** (e.g., two matchers flagged the same line range from different angles, or the same auth bypass surfaced twice with different phrasing). Set \`duplicateOf\` to the exact \`title\` of the primary finding — the one that should keep the canonical verdict. Same vuln class in a different location is **not** a duplicate.
 
 If severity should change, set \`adjustedSeverity\`. Omit if correct.
+
+### Duplicate rules (read carefully)
+
+- \`duplicate\` is only valid within a single file. Cross-file similarity does **not** count.
+- For any equivalence class of duplicates, **exactly one finding stays primary** with a real verdict (true-positive / false-positive / fixed / uncertain). The other(s) are \`duplicate\` with \`duplicateOf\` pointing at the primary's title.
+- The primary you reference in \`duplicateOf\` **must itself have a non-duplicate verdict** in your output (or already in the file's prior revalidation). If you mark every member of a group as duplicate, all of them will be rejected.
+- Pick the primary as the most precise / highest-confidence statement of the issue. The duplicates should add context in their \`reasoning\`, not repeat the full analysis.
 
 ## Output Format
 
@@ -578,14 +586,15 @@ If severity should change, set \`adjustedSeverity\`. Omit if correct.
   {
     "filePath": "exact/path/to/file.ts",
     "title": "exact title from the finding",
-    "verdict": "true-positive" | "false-positive" | "fixed" | "uncertain",
+    "verdict": "true-positive" | "false-positive" | "fixed" | "uncertain" | "duplicate",
     "adjustedSeverity": "CRITICAL" | "HIGH" | "MEDIUM" | "HIGH_BUG" | "BUG",
+    "duplicateOf": "title of the primary finding (only when verdict is duplicate)",
     "reasoning": "Detailed explanation (5-10 sentences). Show your work."
   }
 ]
 \`\`\`
 
-**Include \`filePath\` for every verdict** so we can match verdicts to the correct file. \`adjustedSeverity\` is optional.
+**Include \`filePath\` for every verdict** so we can match verdicts to the correct file. \`adjustedSeverity\` is optional. \`duplicateOf\` is required iff \`verdict === "duplicate"\` and is otherwise ignored.
 
 **Your reasoning is the most important part.** A verdict without thorough reasoning is worthless.`;
 

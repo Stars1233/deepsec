@@ -188,12 +188,13 @@ function printStdoutSummary(args: {
     console.log(`  ${color}${padded}${RESET}  ${count}`);
   }
 
-  // Top findings, severity-ordered. Skips false-positive/fixed verdicts —
-  // those are noise once revalidate has run.
+  // Top findings, severity-ordered. Skips false-positive/fixed/duplicate
+  // verdicts — those are noise once revalidate has run (duplicates point
+  // at a primary that's still in the list).
   for (const severity of ACTIONABLE_SEVERITIES) {
     const findings = findingsBySeverity[severity].filter((f) => {
       const v = f.revalidation?.verdict;
-      return v !== "false-positive" && v !== "fixed";
+      return v !== "false-positive" && v !== "fixed" && v !== "duplicate";
     });
     if (findings.length === 0) continue;
 

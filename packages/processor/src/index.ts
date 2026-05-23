@@ -843,6 +843,14 @@ export async function revalidate(params: {
   falsePositives: number;
   fixed: number;
   uncertain: number;
+  duplicates: number;
+  /**
+   * DUPE verdicts the agent produced that we discarded because they
+   * pointed at no primary, at a non-existent primary, at themselves, or
+   * at another duplicate. They stay unrevalidated and will be retried
+   * on the next run.
+   */
+  duplicatesRejected: number;
   /** Same semantics as `process()` — see that return type. */
   quotaExhausted?: { source: QuotaSource; rawMessage: string };
 }> {
@@ -975,6 +983,8 @@ export async function revalidate(params: {
         falsePositives: 0,
         fixed: 0,
         uncertain: 0,
+        duplicates: 0,
+        duplicatesRejected: 0,
       };
     }
 
@@ -983,6 +993,8 @@ export async function revalidate(params: {
     let totalFP = 0;
     let totalFixed = 0;
     let totalUncertain = 0;
+    let totalDuplicate = 0;
+    let totalDupeRejected = 0;
     let totalCostUsd = 0;
     let batchesCompleted = 0;
     let batchesInFlight = 0;
@@ -1035,8 +1047,23 @@ export async function revalidate(params: {
         const batchMeta = output.meta;
         totalCostUsd += batchMeta.costUsd ?? 0;
 
-        // Match verdicts to findings across all files in the batch
+        // Two-pass match + writeback. Pass 1 applies every non-duplicate
+        // verdict. Pass 2 applies "duplicate" verdicts, but only when the
+        // referenced primary (within the same file) has a non-duplicate
+        // verdict — either freshly applied in pass 1 or already on the
+        // file from a prior revalidation run. This is the invariant
+        // enforcement: every equivalence class of duplicates must have
+        // exactly one non-duplicate primary, so an agent that marks
+        // every member of a group as duplicate has all of those DUPEs
+        // rejected (they just stay unrevalidated and get retried on
+        // the next pass).
+        const dupeVerdicts: typeof output.verdicts = [];
+        const nowIso = new Date().toISOString();
         for (const verdict of output.verdicts) {
+          if (verdict.verdict === "duplicate") {
+            dupeVerdicts.push(verdict);
+            continue;
+          }
           const file = batch.find((f) => f.filePath === verdict.filePath);
           if (!file) continue;
           const finding = file.findings.find((f) => f.title === verdict.title);
@@ -1045,7 +1072,7 @@ export async function revalidate(params: {
             verdict: verdict.verdict,
             reasoning: verdict.reasoning,
             adjustedSeverity: verdict.adjustedSeverity,
-            revalidatedAt: new Date().toISOString(),
+            revalidatedAt: nowIso,
             runId,
             model,
           };
@@ -1057,6 +1084,41 @@ export async function revalidate(params: {
           else if (verdict.verdict === "false-positive") totalFP++;
           else if (verdict.verdict === "fixed") totalFixed++;
           else totalUncertain++;
+        }
+
+        for (const verdict of dupeVerdicts) {
+          const file = batch.find((f) => f.filePath === verdict.filePath);
+          if (!file) continue;
+          const finding = file.findings.find((f) => f.title === verdict.title);
+          if (!finding) continue;
+          // Reject self-reference, missing reference, and pointing at
+          // another DUPE — these all violate the single-primary
+          // invariant. The agent will re-see this finding as
+          // unrevalidated on the next run and can re-classify it.
+          const ref = verdict.duplicateOf;
+          if (!ref || ref === verdict.title) {
+            totalDupeRejected++;
+            continue;
+          }
+          const primary = file.findings.find((f) => f.title === ref);
+          if (!primary) {
+            totalDupeRejected++;
+            continue;
+          }
+          if (!primary.revalidation || primary.revalidation.verdict === "duplicate") {
+            totalDupeRejected++;
+            continue;
+          }
+          finding.revalidation = {
+            verdict: "duplicate",
+            reasoning: verdict.reasoning,
+            duplicateOf: ref,
+            revalidatedAt: nowIso,
+            runId,
+            model,
+          };
+          totalRevalidated++;
+          totalDuplicate++;
         }
 
         // Push a per-file `analysisHistory` entry for this revalidate batch.
@@ -1164,14 +1226,16 @@ export async function revalidate(params: {
       falsePositives: totalFP,
       fixed: totalFixed,
       uncertain: totalUncertain,
+      duplicates: totalDuplicate,
       totalCostUsd,
     });
 
+    const dupeRejectedSuffix = totalDupeRejected > 0 ? `, ${totalDupeRejected} DUPE rejected` : "";
     emitProgress({
       type: "all_complete",
       message: quotaExhausted
         ? `Revalidation stopped: ${quotaExhausted.source} quota/credits exhausted (${totalRevalidated} verdicts before stop)`
-        : `Revalidation complete: ${totalRevalidated} findings — TP: ${totalTP}, FP: ${totalFP}, Fixed: ${totalFixed}, Uncertain: ${totalUncertain}`,
+        : `Revalidation complete: ${totalRevalidated} findings — TP: ${totalTP}, FP: ${totalFP}, Fixed: ${totalFixed}, Uncertain: ${totalUncertain}, Dupe: ${totalDuplicate}${dupeRejectedSuffix}`,
     });
 
     return {
@@ -1181,6 +1245,8 @@ export async function revalidate(params: {
       falsePositives: totalFP,
       fixed: totalFixed,
       uncertain: totalUncertain,
+      duplicates: totalDuplicate,
+      duplicatesRejected: totalDupeRejected,
       quotaExhausted,
     };
   } catch (err) {
