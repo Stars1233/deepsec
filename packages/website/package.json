@@ -27,7 +27,13 @@
     "@types/react-dom": "^19.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
-    "postcss": "^8.5.15",
+    "postcss": "^8.5.19",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss@<8.5.10": "^8.5.10",
+      "esbuild@>=0.27.3 <0.28.1": "^0.28.1"
+    }
   }
 }
