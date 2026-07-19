@@ -47,6 +47,38 @@ pnpm deepsec triage --project-id my-app --model claude-haiku-4-5
 default backend project-wide via `defaultAgent` in
 [`deepsec.config.ts`](configuration.md).
 
+## Thinking level
+
+`process` and `revalidate` accept `--thinking-level` to control how much
+reasoning effort the agent spends per batch:
+
+```bash
+pnpm deepsec process --project-id my-app --thinking-level high
+```
+
+Accepted values: `minimal`, `low`, `medium`, `high`, `xhigh`. The
+default is `xhigh` — deepsec optimizes for finding hard bugs, not for
+cost. Dial down for cheaper reinvestigation waves or quick smoke runs
+over large repos.
+
+The flag maps onto each backend's native dial:
+
+| Backend  | Setting                                     |
+|----------|---------------------------------------------|
+| `codex`  | model reasoning effort (`minimal`–`xhigh`)  |
+| `pi`     | thinking level (`minimal`–`xhigh`)          |
+| `claude` | adaptive-thinking effort (`minimal` → `low`, `xhigh` → `max`) |
+
+It applies to the main investigation/revalidation runs only.
+Special-purpose follow-up calls (the refusal report, JSON repair) keep
+their own fixed, cheap settings regardless of the flag.
+
+Like other subcommand flags, it passes through sandbox mode unchanged:
+
+```bash
+pnpm deepsec sandbox process --project-id my-app --sandboxes 30 --thinking-level high
+```
+
 ## Why these defaults
 
 ### `claude-opus-4-8` for `process` and `revalidate`

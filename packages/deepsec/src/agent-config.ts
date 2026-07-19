@@ -1,6 +1,9 @@
+const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh"] as const;
+
 interface AgentRuntimeOpts {
   model?: string;
   maxTurns?: number;
+  thinkingLevel?: string;
   aiProvider?: string;
   aiBaseUrl?: string;
   aiApiKeyEnv?: string;
@@ -47,6 +50,17 @@ export function buildAgentConfig(opts: AgentRuntimeOpts): Record<string, unknown
     model: opts.model,
     ...(opts.maxTurns ? { maxTurns: opts.maxTurns } : {}),
   };
+  if (opts.thinkingLevel) {
+    if (!(THINKING_LEVELS as readonly string[]).includes(opts.thinkingLevel)) {
+      throw new Error(
+        `--thinking-level must be one of ${THINKING_LEVELS.join(", ")}, got "${opts.thinkingLevel}"`,
+      );
+    }
+    // Same dial, different name per harness: pi and claude read
+    // thinkingLevel, codex reads reasoningEffort.
+    config.thinkingLevel = opts.thinkingLevel;
+    config.reasoningEffort = opts.thinkingLevel;
+  }
   if (opts.aiProvider || hasProviderOverride) config.aiProvider = effectiveProvider;
   if (opts.aiBaseUrl) config.aiBaseUrl = opts.aiBaseUrl;
   if (opts.aiApiKeyEnv) config.aiApiKeyEnv = opts.aiApiKeyEnv;

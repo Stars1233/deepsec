@@ -138,6 +138,20 @@ function buildClaudeEnv(): Record<string, string> {
   return env;
 }
 
+type ClaudeEffort = "low" | "medium" | "high" | "max";
+
+/**
+ * Map the harness-neutral thinkingLevel to the Claude SDK's effort scale.
+ * Applies to the main investigate/revalidate runs only; special-purpose
+ * follow-up calls (refusal report, JSON repair) keep their own settings.
+ */
+function resolveMainRunEffort(config: Record<string, unknown>): ClaudeEffort {
+  const level = config.thinkingLevel;
+  if (level === "minimal" || level === "low") return "low";
+  if (level === "medium" || level === "high") return level;
+  return "max"; // xhigh and unset both mean full effort
+}
+
 async function runRefusalFollowUp(
   sessionId: string | undefined,
   model: string,
@@ -243,7 +257,7 @@ export class ClaudeAgentSdkPlugin implements AgentPlugin {
             maxTurns,
             model,
             thinking: { type: "adaptive" },
-            effort: "max",
+            effort: resolveMainRunEffort(config),
             ...(CLAUDE_CODE_EXECUTABLE
               ? { pathToClaudeCodeExecutable: CLAUDE_CODE_EXECUTABLE }
               : {}),
@@ -514,7 +528,7 @@ export class ClaudeAgentSdkPlugin implements AgentPlugin {
             maxTurns,
             model,
             thinking: { type: "adaptive" },
-            effort: "max",
+            effort: resolveMainRunEffort(config),
             ...(CLAUDE_CODE_EXECUTABLE
               ? { pathToClaudeCodeExecutable: CLAUDE_CODE_EXECUTABLE }
               : {}),

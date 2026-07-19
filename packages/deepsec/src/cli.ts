@@ -159,6 +159,10 @@ program
   )
   .option("--max-turns <n>", "Max conversation turns per batch (default: 150)", parseInt)
   .option(
+    "--thinking-level <level>",
+    "Reasoning/thinking effort for the main agent run: minimal, low, medium, high, or xhigh (default: xhigh)",
+  )
+  .option(
     "--reinvestigate [n]",
     "Re-investigate files. No arg = all files. Pass N as a wave marker — productive analyses are tagged with N, and re-running with the same N skips already-done files. Bump N to request another pass.",
   )
@@ -233,6 +237,10 @@ program
     [],
   )
   .option("--max-turns <n>", "Max conversation turns per batch (default: 150)", parseInt)
+  .option(
+    "--thinking-level <level>",
+    "Reasoning/thinking effort for the main agent run: minimal, low, medium, high, or xhigh (default: xhigh)",
+  )
   .option(
     "--min-severity <sev>",
     "Only revalidate findings at this severity or above (CRITICAL, HIGH, MEDIUM, HIGH_BUG, BUG)",

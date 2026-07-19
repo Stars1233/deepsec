@@ -81,6 +81,7 @@ export async function processCommand(opts: {
   agent?: string;
   model?: string;
   maxTurns?: number;
+  thinkingLevel?: string;
   aiProvider?: string;
   aiBaseUrl?: string;
   aiApiKeyEnv?: string;

@@ -57,7 +57,8 @@ Other knobs:
 ```
 
 The usual `--agent`, `--model`, `--concurrency`, `--batch-size`,
-`--max-turns` flags work the same as in standard mode.
+`--max-turns`, `--thinking-level` flags work the same as in standard
+mode.
 
 ## Auto-created projects
 

@@ -24,6 +24,33 @@ describe("buildAgentConfig", () => {
     ).toThrow(/--ai-provider/);
   });
 
+  it("maps --thinking-level to both harness config keys", () => {
+    expect(
+      buildAgentConfig({
+        model: "openai/gpt-5.5",
+        thinkingLevel: "medium",
+      }),
+    ).toMatchObject({
+      thinkingLevel: "medium",
+      reasoningEffort: "medium",
+    });
+  });
+
+  it("omits thinking keys when --thinking-level is not given", () => {
+    const config = buildAgentConfig({ model: "openai/gpt-5.5" });
+    expect(config).not.toHaveProperty("thinkingLevel");
+    expect(config).not.toHaveProperty("reasoningEffort");
+  });
+
+  it("rejects unknown thinking levels", () => {
+    expect(() =>
+      buildAgentConfig({
+        model: "openai/gpt-5.5",
+        thinkingLevel: "ultra",
+      }),
+    ).toThrow(/--thinking-level must be one of/);
+  });
+
   it("parses repeatable AI headers", () => {
     expect(
       buildAgentConfig({
