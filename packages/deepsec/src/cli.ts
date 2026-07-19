@@ -20,8 +20,11 @@ import { scanCommand } from "./commands/scan.js";
 import { statusCommand } from "./commands/status.js";
 import { triageCommand } from "./commands/triage.js";
 import { loadConfig } from "./load-config.js";
+import { installSandboxOutputCap } from "./output-cap.js";
 import { applyAiGatewayDefaults } from "./preflight.js";
 import { getDeepsecVersion } from "./version.js";
+
+installSandboxOutputCap();
 
 const program = new Command();
 

@@ -57,6 +57,83 @@ function buildSandboxInvocation(
 
 const PARTITIONABLE_COMMANDS = new Set(["process", "revalidate"]);
 
+// An agent inside a sandbox can emit pathological output volume (e.g.
+// `rg '^'` over a large repo). The log stream is parsed record-by-record
+// with unbounded JSON.parse inside @vercel/sandbox, so without a cap it
+// can OOM this orchestrator process. Budget is per command stream.
+const MAX_LOG_BYTES_PER_SANDBOX = 10 * 1024 * 1024;
+const MAX_LOG_LINE_CHARS = 2_000;
+
+/**
+ * Stream a command's logs through onLog with a byte budget and per-line
+ * truncation. Once the budget is exhausted the stream is aborted; the
+ * caller's cmd.wait() remains the arbiter of completion. Never throws.
+ *
+ * onRawLine receives each untruncated line (used for batch-complete
+ * detection) before display truncation is applied.
+ */
+type LoggableCommand = {
+  logs(opts?: { signal?: AbortSignal }): AsyncIterable<{ stream?: string; data: string }>;
+};
+
+async function streamLogsCapped(
+  cmd: LoggableCommand,
+  prefix: string,
+  onLog: (msg: string) => void,
+  onRawLine?: (line: string) => void,
+): Promise<void> {
+  const aborter = new AbortController();
+  let remaining = MAX_LOG_BYTES_PER_SANDBOX;
+  try {
+    for await (const log of cmd.logs({ signal: aborter.signal })) {
+      remaining -= Buffer.byteLength(log.data);
+      const lines = log.data.trim();
+      if (lines) {
+        for (const line of lines.split("\n")) {
+          onRawLine?.(line);
+          const shown =
+            line.length > MAX_LOG_LINE_CHARS
+              ? `${line.slice(0, MAX_LOG_LINE_CHARS)}… [line truncated]`
+              : line;
+          onLog(`${prefix} ${shown}`);
+        }
+      }
+      if (remaining <= 0) {
+        onLog(
+          `${prefix} [log stream exceeded ${Math.round(MAX_LOG_BYTES_PER_SANDBOX / 1024 / 1024)}MiB; further output suppressed]`,
+        );
+        aborter.abort();
+        break;
+      }
+    }
+  } catch {
+    // Stream errors (including our own abort) are non-fatal here.
+  }
+}
+
+/**
+ * Read a command's stderr via the log stream, aborting once maxChars have
+ * been collected. cmd.stderr() accumulates the entire stream into memory
+ * with no cap, so it must not be called on agent-driven commands.
+ */
+async function readStderrCapped(cmd: LoggableCommand, maxChars: number): Promise<string> {
+  const aborter = new AbortController();
+  let out = "";
+  try {
+    for await (const log of cmd.logs({ signal: aborter.signal })) {
+      if (log.stream !== "stderr") continue;
+      out += log.data;
+      if (out.length >= maxChars) {
+        aborter.abort();
+        break;
+      }
+    }
+  } catch {
+    // Stream errors (including our own abort) are non-fatal here.
+  }
+  return out.slice(0, maxChars);
+}
+
 // --- Upload prep ---
 
 /**
@@ -424,19 +501,10 @@ export async function collect(
 
       if (cmd.exitCode === null) {
         onLog(`[sandbox-${entry.index}] Still running, waiting...`);
-        try {
-          for await (const log of cmd.logs()) {
-            const lines = log.data.trim();
-            if (lines) {
-              for (const line of lines.split("\n")) {
-                onLog(`[sandbox-${entry.index}] ${line}`);
-              }
-            }
-          }
-        } catch {}
+        await streamLogsCapped(cmd, `[sandbox-${entry.index}]`, onLog);
         const finished = await cmd.wait();
         if (finished.exitCode !== 0) {
-          const stderr = await finished.stderr();
+          const stderr = await readStderrCapped(finished, 500);
           onLog(`[sandbox-${entry.index}] Failed (exit ${finished.exitCode})`);
           try {
             await sandbox.stop();
@@ -450,7 +518,7 @@ export async function collect(
           };
         }
       } else if (cmd.exitCode !== 0) {
-        const stderr = await cmd.stderr();
+        const stderr = await readStderrCapped(cmd, 500);
         onLog(`[sandbox-${entry.index}] Was failed (exit ${cmd.exitCode})`);
         try {
           await sandbox.stop();
@@ -730,21 +798,13 @@ async function runOnSandboxAttached(
       detached: true,
     });
 
-    try {
-      for await (const log of cmd.logs()) {
-        const lines = log.data.trim();
-        if (lines) {
-          for (const line of lines.split("\n")) {
-            onLog(`[sandbox-${index}] ${line}`);
-            if (nudge && BATCH_COMPLETE_RE.test(line)) {
-              // Kick the streaming download loop to sync now — a batch
-              // just finished and wrote file records to disk.
-              nudge.signal();
-            }
-          }
-        }
+    await streamLogsCapped(cmd, `[sandbox-${index}]`, onLog, (line) => {
+      if (nudge && BATCH_COMPLETE_RE.test(line)) {
+        // Kick the streaming download loop to sync now — a batch
+        // just finished and wrote file records to disk.
+        nudge.signal();
       }
-    } catch {}
+    });
     const tLogsClosed = Date.now();
 
     const result = await cmd.wait();
@@ -755,7 +815,7 @@ async function runOnSandboxAttached(
     }
 
     if (result.exitCode !== 0) {
-      const stderr = await result.stderr();
+      const stderr = await readStderrCapped(result, 500);
       instance.status = "error";
       instance.error = `Exit code ${result.exitCode}: ${stderr.slice(0, 500)}`;
       onLog(`[sandbox-${index}] ${config.command} failed (exit ${result.exitCode})`);
